@@ -57,9 +57,20 @@ class Settings(BaseSettings):
 
     # --- Storage ---
     data_root: str = "/data"  # per-user uploads/results live under {data_root}/{user_id}/{job_id}
-    max_upload_mb: int = 512
+    max_upload_mb: int = 1024  # combined total across all files in one upload, not per-file
     retention_days: int = 30
     delete_raw_after_success: bool = True
+
+    # Shown alongside every user-facing rejection/error message.
+    github_issues_url: str = "https://github.com/HussinLab/DIETNETWORK/issues"
+
+    # --- Concurrency (disk headroom on the single-VM deploy) ---
+    # Caps simultaneous result-zip builds/downloads -- separate from the
+    # worker's processing concurrency (CELERY_WORKER_CONCURRENCY), which
+    # bounds how many jobs run at once, not how many results get downloaded
+    # at once. See app/concurrency.py.
+    max_concurrent_downloads: int = 9
+    download_slot_ttl_seconds: int = 600  # self-heals a slot leaked by a crashed request
 
     # --- Uploads accepted ---
     allowed_genotype_extensions: tuple[str, ...] = (".vcf", ".vcf.gz", ".bgen")

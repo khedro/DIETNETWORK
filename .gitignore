@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# Genotyping test data
+dataTest/
+
 # Private exp files
 .ipynb_checkpoints
 #*.ipynb
@@ -27,6 +30,11 @@ node_modules/
 frontend/build/
 frontend/.svelte-kit/
 *.pyc
+.pytest_cache/
+
+# --- Testing (see TESTING.md / tests/) ---
+tests/.volumes-test/
+dataTest/fixtures/
 
 # Pulumi
 infra/venv/

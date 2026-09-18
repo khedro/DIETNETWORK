@@ -16,9 +16,15 @@ x-backend-env: &backend-env
   SMTP_USERNAME: ${SMTP_USERNAME:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-no-reply@example.org}
+  SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
   DATA_ROOT: /data
   RETENTION_DAYS: ${RETENTION_DAYS:-30}
   DELETE_RAW_AFTER_SUCCESS: ${DELETE_RAW_AFTER_SUCCESS:-true}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-1024}
+  GITHUB_ISSUES_URL: ${GITHUB_ISSUES_URL:-https://github.com/HussinLab/DIETNETWORK/issues}
+  # Caps simultaneous result-zip builds/downloads so they don't overrun the
+  # instance's disk headroom alongside uploads + in-flight processing.
+  MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-9}
 
 x-worker-env: &worker-env
   DATABASE_URL_SYNC: postgresql+psycopg2://${POSTGRES_USER:-dietnet}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-dietnet}
@@ -32,7 +38,17 @@ x-worker-env: &worker-env
   SMTP_USERNAME: ${SMTP_USERNAME:-}
   SMTP_PASSWORD: ${SMTP_PASSWORD:-}
   SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-no-reply@example.org}
+  SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
   ENSEMBLE_WORKERS: ${ENSEMBLE_WORKERS:-1}
+  MAX_SAMPLES: ${MAX_SAMPLES:-10000}
+  MIN_RELIABLE_SNP_OVERLAP: ${MIN_RELIABLE_SNP_OVERLAP:-1000}
+  MAX_ALLELE_MISMATCH_FRACTION: ${MAX_ALLELE_MISMATCH_FRACTION:-0.05}
+  # How many inference jobs run in parallel -- the processing side of the
+  # concurrency cap (disk/CPU headroom), independent of the download cap
+  # above. CPU-only ensemble (deployPlan.md); tune against measured vCPU
+  # contention rather than assuming 9 is right for both disk and CPU.
+  CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-9}
+  GITHUB_ISSUES_URL: ${GITHUB_ISSUES_URL:-https://github.com/HussinLab/DIETNETWORK/issues}
 
 services:
   postgres:
@@ -115,14 +131,15 @@ services:
     environment:
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-https://localhost/api}
       PUBLIC_TURNSTILE_SITE_KEY: ${PUBLIC_TURNSTILE_SITE_KEY:-}
+      PUBLIC_GITHUB_ISSUES_URL: ${GITHUB_ISSUES_URL:-https://github.com/HussinLab/DIETNETWORK/issues}
     networks: [web]
 
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8443:443"
     environment:
       DOMAIN: ${DOMAIN:-localhost}
     volumes:

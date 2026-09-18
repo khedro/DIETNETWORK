@@ -1,24 +1,14 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.database import init_models
 from app.routers import auth, jobs, uploads
 
 settings = get_settings()
 
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    if settings.environment == "development":
-        # In production, run Alembic migrations at deploy time instead.
-        await init_models()
-    yield
-
-
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+# Schema is owned by Alembic (backend/alembic/) and applied by
+# docker-entrypoint.sh before this app starts, in every environment.
+app = FastAPI(title=settings.app_name)
 
 app.add_middleware(
     CORSMiddleware,

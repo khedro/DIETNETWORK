@@ -63,6 +63,7 @@ class JobStatus(str, enum.Enum):
 class InputType(str, enum.Enum):
     vcf = "vcf"
     bgen = "bgen"
+    plink = "plink"
 
 
 class Job(Base):

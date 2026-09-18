@@ -56,3 +56,7 @@ class JobOut(BaseModel):
 
 class JobDetailOut(JobOut):
     predictions: dict | None
+    # Not a DB column -- computed per-request in the /jobs/{id} route, only
+    # while status == queued. Not present on the /jobs list to avoid an N+1
+    # count query there.
+    queue_position: int | None = None

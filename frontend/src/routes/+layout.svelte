@@ -3,6 +3,8 @@
 	import { onMount } from 'svelte';
 	import { user, loadUser, logout } from '$lib/stores/auth';
 	import { goto } from '$app/navigation';
+	import { t } from '$lib/i18n';
+	import LocaleSwitcher from '$lib/components/LocaleSwitcher.svelte';
 
 	onMount(loadUser);
 
@@ -17,13 +19,14 @@
 		<a href="/" class="brand">🧬 Diet Network Ancestry</a>
 		<nav>
 			{#if $user}
-				<a href="/dashboard">Dashboard</a>
-				<a href="/upload">New analysis</a>
-				<button class="btn-secondary" on:click={handleLogout}>Log out</button>
+				<a href="/dashboard">{$t('layout.nav.dashboard')}</a>
+				<a href="/upload">{$t('layout.nav.newAnalysis')}</a>
+				<button class="btn-secondary" on:click={handleLogout}>{$t('layout.nav.logout')}</button>
 			{:else}
-				<a href="/login">Log in</a>
-				<a href="/signup" class="btn">Sign up</a>
+				<a href="/login">{$t('layout.nav.login')}</a>
+				<a href="/signup" class="btn">{$t('layout.nav.signup')}</a>
 			{/if}
+			<LocaleSwitcher />
 		</nav>
 	</div>
 </header>
@@ -34,8 +37,8 @@
 
 <footer class="container">
 	<p class="muted">
-		Research tool — inference only, not a diagnostic or clinical service. See our
-		<a href="/privacy">privacy &amp; data retention policy</a>.
+		{$t('layout.footer.notice')}
+		<a href="/privacy">{$t('layout.footer.privacyLink')}</a>.
 	</p>
 </footer>
 

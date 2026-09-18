@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { api, ApiError } from '$lib/api';
 	import Turnstile from '$lib/components/Turnstile.svelte';
+	import { t } from '$lib/i18n';
 
 	let email = '';
 	let password = '';
@@ -13,7 +14,7 @@
 	async function handleSubmit() {
 		error = '';
 		if (!captchaToken) {
-			error = 'Please complete the CAPTCHA challenge.';
+			error = $t('auth.errorCaptcha');
 			return;
 		}
 		submitting = true;
@@ -21,7 +22,7 @@
 			await api.signup(email, password, captchaToken, consent);
 			done = true;
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Something went wrong. Please try again.';
+			error = e instanceof ApiError ? e.message : $t('auth.errorGeneric');
 		} finally {
 			submitting = false;
 		}
@@ -29,26 +30,23 @@
 </script>
 
 <div class="form-wrap">
-	<h1>Create your account</h1>
+	<h1>{$t('signup.title')}</h1>
 
 	{#if done}
 		<div class="card">
-			<p>
-				Check <strong>{email}</strong> for a verification link. You must verify your email before
-				you can log in or upload data.
-			</p>
+			<p>{$t('signup.doneNoticePrefix')} <strong>{email}</strong> {$t('signup.doneNoticeSuffix')}</p>
 		</div>
 	{:else}
 		<form class="card stack" on:submit|preventDefault={handleSubmit}>
 			{#if error}<div class="error-banner">{error}</div>{/if}
 
 			<div>
-				<label for="email">Email</label>
+				<label for="email">{$t('auth.email')}</label>
 				<input id="email" type="email" bind:value={email} required autocomplete="email" />
 			</div>
 
 			<div>
-				<label for="password">Password</label>
+				<label for="password">{$t('auth.password')}</label>
 				<input
 					id="password"
 					type="password"
@@ -57,24 +55,24 @@
 					minlength="12"
 					autocomplete="new-password"
 				/>
-				<p class="muted">At least 12 characters, with upper, lower, and a digit.</p>
+				<p class="muted">{$t('signup.passwordHint')}</p>
 			</div>
 
 			<label class="checkbox">
 				<input type="checkbox" bind:checked={consent} required />
 				<span>
-					I consent to the processing of my genetic data as described in the
-					<a href="/privacy">privacy policy</a>, including 30-day automatic deletion.
+					{$t('signup.consentPrefix')}
+					<a href="/privacy">{$t('signup.consentLink')}</a>{$t('signup.consentSuffix')}
 				</span>
 			</label>
 
 			<Turnstile bind:token={captchaToken} />
 
 			<button type="submit" disabled={submitting}>
-				{submitting ? 'Creating account…' : 'Create account'}
+				{submitting ? $t('signup.submitting') : $t('signup.submit')}
 			</button>
 
-			<p class="muted">Already have an account? <a href="/login">Log in</a></p>
+			<p class="muted">{$t('signup.hasAccount')} <a href="/login">{$t('signup.loginLink')}</a></p>
 		</form>
 	{/if}
 </div>

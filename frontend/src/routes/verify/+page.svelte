@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
 	import { api, ApiError } from '$lib/api';
+	import { t } from '$lib/i18n';
 
 	let status: 'checking' | 'ok' | 'error' = 'checking';
 	let message = '';
@@ -10,7 +11,7 @@
 		const token = $page.url.searchParams.get('token');
 		if (!token) {
 			status = 'error';
-			message = 'Missing verification token.';
+			message = $t('verify.missingToken');
 			return;
 		}
 		try {
@@ -18,21 +19,24 @@
 			status = 'ok';
 		} catch (e) {
 			status = 'error';
-			message = e instanceof ApiError ? e.message : 'Verification failed.';
+			message = e instanceof ApiError ? e.message : $t('verify.failedGeneric');
 		}
 	});
 </script>
 
 <div class="form-wrap card">
 	{#if status === 'checking'}
-		<p>Verifying your email…</p>
+		<p>{$t('verify.checking')}</p>
 	{:else if status === 'ok'}
-		<h2>Email verified 🎉</h2>
-		<p class="muted">You can now <a href="/login">log in</a> and start an analysis.</p>
+		<h2>{$t('verify.successTitle')}</h2>
+		<p class="muted">
+			{$t('verify.successPrefix')} <a href="/login">{$t('verify.loginLink')}</a>
+			{$t('verify.successSuffix')}
+		</p>
 	{:else}
-		<h2>Verification failed</h2>
+		<h2>{$t('verify.failedTitle')}</h2>
 		<p class="error-banner">{message}</p>
-		<p class="muted">The link may have expired. Try signing up again to request a new one.</p>
+		<p class="muted">{$t('verify.failedHint')}</p>
 	{/if}
 </div>
 

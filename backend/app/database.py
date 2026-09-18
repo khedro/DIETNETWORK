@@ -16,12 +16,3 @@ class Base(DeclarativeBase):
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session
-
-
-async def init_models():
-    """Create tables if they don't exist yet. Fine for first deploy; use
-    Alembic migrations (backend/alembic/) for anything after that."""
-    import app.models  # noqa: F401  (ensure models are registered on Base)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)

@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { api, type Job } from '$lib/api';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import { t } from '$lib/i18n';
 
 	let jobs: Job[] = [];
 	let loading = true;
@@ -13,7 +14,7 @@
 			jobs = await api.listJobs();
 			error = '';
 		} catch {
-			error = 'Could not load your jobs. Try refreshing.';
+			error = $t('dashboard.loadError');
 		} finally {
 			loading = false;
 		}
@@ -32,29 +33,29 @@
 </script>
 
 <div class="header-row">
-	<h1>Your analyses</h1>
-	<a href="/upload" class="btn">New analysis</a>
+	<h1>{$t('dashboard.title')}</h1>
+	<a href="/upload" class="btn">{$t('dashboard.newAnalysis')}</a>
 </div>
 
 {#if loading}
-	<p class="muted">Loading…</p>
+	<p class="muted">{$t('dashboard.loading')}</p>
 {:else if error}
 	<div class="error-banner">{error}</div>
 {:else if jobs.length === 0}
 	<div class="card empty-state">
-		<p>You haven't run an ancestry analysis yet.</p>
-		<a href="/upload" class="btn">Upload your first genotype file</a>
+		<p>{$t('dashboard.emptyNotice')}</p>
+		<a href="/upload" class="btn">{$t('dashboard.emptyCta')}</a>
 	</div>
 {:else}
 	<div class="card" style="padding: 0;">
 		<table>
 			<thead>
 				<tr>
-					<th>Job</th>
-					<th>Type</th>
-					<th>Status</th>
-					<th>SNP overlap</th>
-					<th>Submitted</th>
+					<th>{$t('dashboard.table.job')}</th>
+					<th>{$t('dashboard.table.type')}</th>
+					<th>{$t('dashboard.table.status')}</th>
+					<th>{$t('dashboard.table.overlap')}</th>
+					<th>{$t('dashboard.table.submitted')}</th>
 					<th></th>
 				</tr>
 			</thead>
@@ -67,14 +68,15 @@
 						<td>
 							{#if job.snp_overlap_count !== null}
 								{job.snp_overlap_count} / {job.snp_overlap_total}
-								{#if job.is_reliable === false}<span title="Below reliability threshold">⚠️</span
+								{#if job.is_reliable === false}<span title={$t('dashboard.overlapWarningTitle')}
+										>⚠️</span
 									>{/if}
 							{:else}
 								—
 							{/if}
 						</td>
 						<td class="muted">{new Date(job.created_at).toLocaleString()}</td>
-						<td><a href="/jobs/{job.id}">View</a></td>
+						<td><a href="/jobs/{job.id}">{$t('dashboard.table.view')}</a></td>
 					</tr>
 				{/each}
 			</tbody>

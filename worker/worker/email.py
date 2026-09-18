@@ -51,17 +51,40 @@ def send_job_completed_email(
     _send(to_address, subject, text, html)
 
 
+def send_job_started_email(to_address: str, job_id: str) -> None:
+    """Fired once when a job leaves the queue and actually starts
+    processing (see the queued -> running transition in worker/tasks.py) --
+    the FCFS-queue counterpart to the completion/failure emails, so a user
+    waiting behind the concurrency cap (see DEPLOYMENT.md) doesn't have to
+    keep the job page open to know their upload made it off the queue."""
+    results_url = f"{settings.frontend_url}/jobs/{job_id}"
+    subject = f"{settings.app_name}: your ancestry job has started"
+    text = (
+        f"Your ancestry inference job ({job_id}) has left the queue and started processing.\n\n"
+        f"Track progress: {results_url}\n\n"
+        "We'll email you again once it completes."
+    )
+    html = f"""
+    <p>Your ancestry inference job <code>{job_id}</code> has left the queue and started processing.</p>
+    <p><a href="{results_url}">Track progress</a>.</p>
+    <p>We'll email you again once it completes.</p>
+    """
+    _send(to_address, subject, text, html)
+
+
 def send_job_failed_email(to_address: str, job_id: str) -> None:
     results_url = f"{settings.frontend_url}/jobs/{job_id}"
     subject = f"{settings.app_name}: your ancestry job failed"
     text = (
         f"Your ancestry inference job ({job_id}) failed to complete.\n\n"
         "This is usually caused by malformed input data or an unsupported genome build. "
-        f"See {results_url} for details, or contact support if the problem persists."
+        f"See {results_url} for details.\n\n"
+        f"If this looks wrong, please open an issue: {settings.github_issues_url}"
     )
     html = f"""
     <p>Your ancestry inference job <code>{job_id}</code> failed to complete.</p>
     <p>This is usually caused by malformed input data or an unsupported genome build.</p>
-    <p><a href="{results_url}">View job details</a> or contact support if the problem persists.</p>
+    <p><a href="{results_url}">View job details</a>.</p>
+    <p>If this looks wrong, please <a href="{settings.github_issues_url}">open an issue on GitHub</a>.</p>
     """
     _send(to_address, subject, text, html)

@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { PUBLIC_TURNSTILE_SITE_KEY } from '$env/static/public';
+	// Dynamic (not static): see comment in src/lib/api.ts.
+	import { env } from '$env/dynamic/public';
+
+	const PUBLIC_TURNSTILE_SITE_KEY = env.PUBLIC_TURNSTILE_SITE_KEY;
 
 	export let token = '';
 

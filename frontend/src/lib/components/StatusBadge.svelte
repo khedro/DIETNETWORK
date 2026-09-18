@@ -1,15 +1,17 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
+
 	export let status: 'queued' | 'running' | 'done' | 'failed';
 
-	const labels: Record<string, string> = {
-		queued: 'Queued',
-		running: 'Running',
-		done: 'Done',
-		failed: 'Failed'
-	};
+	const labelKeys = {
+		queued: 'status.queued',
+		running: 'status.running',
+		done: 'status.done',
+		failed: 'status.failed'
+	} as const;
 </script>
 
-<span class="badge {status}">{labels[status] ?? status}</span>
+<span class="badge {status}">{$t(labelKeys[status])}</span>
 
 <style>
 	.badge {

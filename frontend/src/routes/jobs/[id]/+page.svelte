@@ -3,6 +3,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { api, type JobDetail, ApiError } from '$lib/api';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
+	import SupportLink from '$lib/components/SupportLink.svelte';
+	import { t } from '$lib/i18n';
 
 	let job: JobDetail | null = null;
 	let error = '';
@@ -14,7 +16,7 @@
 			error = '';
 			if (job.status === 'done' || job.status === 'failed') clearInterval(interval);
 		} catch (e) {
-			error = e instanceof ApiError ? e.message : 'Could not load this job.';
+			error = e instanceof ApiError ? e.message : $t('jobDetail.loadError');
 			clearInterval(interval);
 		}
 	}
@@ -24,79 +26,60 @@
 		interval = setInterval(refresh, 4000);
 	});
 	onDestroy(() => clearInterval(interval));
-
-	$: modelColumns = job?.predictions?.rows?.length
-		? Object.keys(job.predictions.rows[0]).filter((k) => k !== 'samples')
-		: [];
 </script>
 
-<a href="/dashboard" class="muted">&larr; Back to dashboard</a>
+<a href="/dashboard" class="muted">{$t('jobDetail.back')}</a>
 
 {#if error}
 	<div class="error-banner" style="margin-top:1rem">{error}</div>
+	<SupportLink />
 {:else if !job}
-	<p class="muted">Loading…</p>
+	<p class="muted">{$t('jobDetail.loading')}</p>
 {:else}
 	<div class="header-row">
-		<h1>Analysis <code>{job.id.slice(0, 8)}</code></h1>
+		<h1>{$t('jobDetail.heading')} <code>{job.id.slice(0, 8)}</code></h1>
 		<StatusBadge status={job.status} />
 	</div>
 
 	{#if job.status === 'queued' || job.status === 'running'}
 		<div class="card">
-			<p>
-				Your job is {job.status === 'queued' ? 'queued and will start shortly' : 'running'}. The
-				Diet Network ensemble runs 15 models sequentially, so this can take a few minutes. This
-				page updates automatically.
-			</p>
+			{#if job.status === 'queued'}
+				<p>
+					{$t('jobDetail.queued')}{job.queue_position
+						? ` (${job.queue_position} ${$t(
+								job.queue_position === 1 ? 'jobDetail.aheadSingular' : 'jobDetail.aheadPlural'
+						  )})`
+						: ''}. {$t('jobDetail.queuedEmailNotice')}
+				</p>
+			{:else}
+				<p>{$t('jobDetail.running')}</p>
+			{/if}
+			<p class="muted">{$t('jobDetail.autoUpdate')}</p>
 		</div>
 	{:else if job.status === 'failed'}
 		<div class="card">
-			<p class="error-banner">{job.error_message ?? 'The job failed.'}</p>
-			<p class="muted">
-				This is usually caused by malformed input or a genome build mismatch. You can start a new
-				analysis from the dashboard.
-			</p>
+			<p class="error-banner">{job.error_message ?? $t('jobDetail.failedGeneric')}</p>
+			<p class="muted">{$t('jobDetail.failedHint')}</p>
+			<SupportLink />
 		</div>
 	{:else if job.status === 'done'}
 		<div class="stack">
+			<a class="btn" href={api.downloadUrl(job.id)} target="_blank" rel="noreferrer">
+				{$t('jobDetail.download')}
+			</a>
+
 			{#if job.is_reliable === false}
 				<div class="warn-banner">
-					⚠️ <strong>Low SNP overlap ({job.snp_overlap_count} / {job.snp_overlap_total}).</strong>
-					Diet Network's authors recommend discarding predictions when overlap with the reference
-					SNP panel is under 1000 SNPs. Treat these results as unreliable — a common cause is a
-					genome build other than GRCh38.
+					⚠️ <strong
+						>{$t('jobDetail.lowOverlapPrefix')} ({job.snp_overlap_count} / {job.snp_overlap_total}).</strong
+					>
+					{$t('jobDetail.lowOverlapBody')}
 				</div>
 			{:else}
 				<div class="card">
-					SNP overlap with Diet Network reference panel: <strong
-						>{job.snp_overlap_count} / {job.snp_overlap_total}</strong
-					> ✅
+					{$t('jobDetail.overlapGood')} <strong>{job.snp_overlap_count} / {job.snp_overlap_total}</strong> ✅
 				</div>
 			{/if}
-
-			<div class="card" style="padding:0; overflow-x:auto;">
-				<table>
-					<thead>
-						<tr>
-							<th>Sample</th>
-							{#each modelColumns as col}<th>{col}</th>{/each}
-						</tr>
-					</thead>
-					<tbody>
-						{#each job.predictions?.rows ?? [] as row}
-							<tr>
-								<td>{row['samples']}</td>
-								{#each modelColumns as col}<td>{row[col]}</td>{/each}
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-			</div>
-
-			<a class="btn btn-secondary" href={api.downloadUrl(job.id)} target="_blank" rel="noreferrer">
-				Download predictions (.txt)
-			</a>
 		</div>
 	{/if}
 {/if}

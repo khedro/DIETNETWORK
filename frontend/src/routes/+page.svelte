@@ -1,43 +1,37 @@
 <script lang="ts">
 	import { user } from '$lib/stores/auth';
+	import { t } from '$lib/i18n';
 </script>
 
 <div class="hero">
-	<h1>Genetic ancestry inference, powered by Diet Network</h1>
-	<p class="muted">
-		Upload your VCF or bgen genotype file and get ancestry predictions from HussinLab's pretrained
-		Diet Network ensemble — 15 models trained on 1000 Genomes, covering 24 populations.
-	</p>
+	<h1>{$t('home.title')}</h1>
+	<p class="muted">{$t('home.subtitle')}</p>
 	<div class="cta">
 		{#if $user}
-			<a href="/upload" class="btn">Start a new analysis</a>
+			<a href="/upload" class="btn">{$t('home.cta.start')}</a>
 		{:else}
-			<a href="/signup" class="btn">Create a free account</a>
-			<a href="/login" class="btn btn-secondary">Log in</a>
+			<a href="/signup" class="btn">{$t('home.cta.createAccount')}</a>
+			<a href="/login" class="btn btn-secondary">{$t('home.cta.login')}</a>
 		{/if}
 	</div>
 </div>
 
 <div class="grid">
 	<div class="card">
-		<h3>Bring your own genotypes</h3>
+		<h3>{$t('home.feature1.title')}</h3>
 		<p class="muted">
-			Accepts .vcf, .vcf.gz, and .bgen (with a .sample file). Genotypes must be harmonized to
+			{$t('home.feature1.prefix')}
 			<strong>GRCh38</strong>.
 		</p>
 	</div>
 	<div class="card">
-		<h3>Async, ensemble inference</h3>
-		<p class="muted">
-			Each job runs 15 models sequentially — typically a few minutes. Track status live from your
-			dashboard and get an email when results are ready.
-		</p>
+		<h3>{$t('home.feature2.title')}</h3>
+		<p class="muted">{$t('home.feature2.body')}</p>
 	</div>
 	<div class="card">
-		<h3>Privacy by design</h3>
+		<h3>{$t('home.feature3.title')}</h3>
 		<p class="muted">
-			Raw genotype files are deleted immediately after inference succeeds. All results
-			auto-delete after 30 days. See our <a href="/privacy">privacy policy</a>.
+			{$t('home.feature3.prefix')} <a href="/privacy">{$t('home.feature3.privacyLink')}</a>.
 		</p>
 	</div>
 </div>

@@ -9,6 +9,7 @@ creation; the worker only reads/writes rows.
 from datetime import datetime, timezone
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text, create_engine
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from worker.config import settings
@@ -24,15 +25,19 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    # Postgres column type is `uuid` (see backend/app/models.py, UUID(as_uuid=False)).
+    # psycopg2 auto-adapts `uuid` columns to Python uuid.UUID unless SQLAlchemy is
+    # told the real column type -- a plain String mapping here silently gets back
+    # UUID objects instead of str, which breaks anything doing os.path.join(id, ...).
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     email: Mapped[str] = mapped_column(String)
 
 
 class Job(Base):
     __tablename__ = "jobs"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False))
     status: Mapped[str] = mapped_column(String)
     input_type: Mapped[str] = mapped_column(String)
     raw_path: Mapped[str | None] = mapped_column(String)

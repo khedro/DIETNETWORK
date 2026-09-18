@@ -1,4 +1,9 @@
-import { PUBLIC_API_BASE_URL } from '$env/static/public';
+// Dynamic (not static) public env: the API base URL differs per deploy
+// (dev/local-test/prod) and is only known at container runtime, not at
+// `npm run build` time inside the Docker image -- see docker-compose.yml.
+import { env } from '$env/dynamic/public';
+
+const PUBLIC_API_BASE_URL = env.PUBLIC_API_BASE_URL;
 
 export class ApiError extends Error {
 	status: number;
@@ -55,6 +60,9 @@ export interface Job {
 
 export interface JobDetail extends Job {
 	predictions: { rows: Record<string, string | number>[] } | null;
+	// Only present while status === 'queued' -- 1-based position in the
+	// FCFS processing queue (see DEPLOYMENT.md's concurrency cap).
+	queue_position: number | null;
 }
 
 export const api = {
@@ -80,13 +88,23 @@ export const api = {
 
 	getJob: (id: string) => request<JobDetail>(`/jobs/${id}`),
 
-	upload: (genotypeFile: File, consent: boolean, sampleFile?: File) => {
+	upload: (
+		genotypeFile: File,
+		consent: boolean,
+		sampleFile?: File,
+		bimFile?: File,
+		famFile?: File
+	) => {
 		const form = new FormData();
 		form.append('genotype_file', genotypeFile);
 		form.append('consent', String(consent));
 		if (sampleFile) form.append('sample_file', sampleFile);
+		if (bimFile) form.append('bim_file', bimFile);
+		if (famFile) form.append('fam_file', famFile);
 		return request<Job>('/uploads', { method: 'POST', body: form });
 	},
 
+	// Zips everything infer.sh produced (predictions, SNP overlap lists,
+	// hdf5 dataset, per-model .npz outputs) -- see README's "Output files".
 	downloadUrl: (jobId: string) => `${PUBLIC_API_BASE_URL}/jobs/${jobId}/download`
 };

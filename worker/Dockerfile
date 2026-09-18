@@ -7,8 +7,14 @@ ARG DEBIAN_FRONTEND=noninteractive
 WORKDIR /opt
 
 # --- OS deps + PLINK 1.9 / PLINK2 (static builds, no apt package exists) ---
+# bc is required by Dietnet_inference/infer.sh (SNP-overlap scaling factor);
+# without it, `scale=$(echo "... " | bc -l)` silently comes out empty, which
+# makes the downstream `--scale $scale` argparse call fail with "expected
+# one argument" -- and infer.sh doesn't check that exit code, so the script
+# still prints "Inference ... completed" even though no predictions file
+# (or even the intermediate .hdf5) was ever produced.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential unzip curl ca-certificates \
+    build-essential unzip curl ca-certificates bc \
     && rm -rf /var/lib/apt/lists/*
 
 # PLINK 1.9 (stable build). Override PLINK_URL at build time if the upstream
@@ -19,7 +25,7 @@ RUN mkdir -p /opt/plink && curl -fsSL "$PLINK_URL" -o /tmp/plink.zip \
     && chmod +x /opt/plink/plink
 
 # PLINK2 (needed for bgen -> PLINK1.9-binary conversion)
-ARG PLINK2_URL=https://s3.amazonaws.com/plink2-assets/alpha6/plink2_linux_x86_64_20240818.zip
+ARG PLINK2_URL=https://s3.amazonaws.com/plink2-assets/alpha7/plink2_linux_x86_64_20260808.zip
 RUN mkdir -p /opt/plink2 && curl -fsSL "$PLINK2_URL" -o /tmp/plink2.zip \
     && unzip -o /tmp/plink2.zip -d /opt/plink2 && rm /tmp/plink2.zip \
     && chmod +x /opt/plink2/plink2
@@ -54,5 +60,11 @@ RUN useradd -m -u 10001 worker && mkdir -p /data && chown -R worker /data /app
 USER worker
 
 # Two process types share this image: `celery worker` and `celery beat`
-# (compose picks the command per-service; see docker-compose.yml).
-CMD ["celery", "-A", "worker.celery_app.celery_app", "worker", "--loglevel=INFO", "--concurrency=1", "-Q", "inference,maintenance"]
+# (compose picks the command per-service via `command:`; see
+# docker-compose.yml). Shell form (not exec-form array) so
+# CELERY_WORKER_CONCURRENCY is read at container start, letting the
+# processing-concurrency cap be tuned via env without an image rebuild.
+# Defaults to 1 (safe/conservative) if the image is run standalone without
+# it set -- docker-compose.yml's worker service sets it explicitly.
+CMD celery -A worker.celery_app.celery_app worker --loglevel=INFO \
+    --concurrency=${CELERY_WORKER_CONCURRENCY:-1} -Q inference,maintenance

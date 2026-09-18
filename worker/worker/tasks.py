@@ -6,14 +6,16 @@ import traceback
 from worker.celery_app import celery_app
 from worker.config import settings
 from worker.db import Job, User, get_session, utcnow
-from worker.email import send_job_completed_email, send_job_failed_email
+from worker.email import send_job_completed_email, send_job_failed_email, send_job_started_email
 from worker.pipeline import (
     PipelineError,
-    cleanup_intermediate_files,
+    check_allele_harmonization,
+    check_snp_overlap,
     convert_bgen_to_plink,
     convert_vcf_to_plink,
-    get_snp_overlap,
+    count_samples,
     parse_predictions,
+    requalify_plink,
     run_infer,
 )
 
@@ -27,10 +29,17 @@ def _find_genotype_file(raw_dir: str, input_type: str) -> str:
             if hits:
                 return hits[0]
         raise PipelineError("No VCF file found in upload directory.")
-    else:
+    elif input_type == "bgen":
         hits = glob.glob(os.path.join(raw_dir, "*.bgen"))
         if not hits:
             raise PipelineError("No bgen file found in upload directory.")
+        return hits[0]
+    else:
+        # uploads.py always saves an already-PLINK upload as query.bed
+        # alongside query.bim/query.fam (see create_upload).
+        hits = glob.glob(os.path.join(raw_dir, "*.bed"))
+        if not hits:
+            raise PipelineError("No .bed file found in upload directory.")
         return hits[0]
 
 
@@ -55,6 +64,18 @@ def run_inference_job(self, job_id: str) -> None:
         job.started_at = utcnow()
         session.commit()
 
+        # Counterpart to the completion/failure emails: tells a user who was
+        # behind the concurrency cap (see DEPLOYMENT.md) that their job made
+        # it off the queue, without them needing to keep the page open.
+        # Guarded separately from the rest of the task: this fires before
+        # any real processing happens, so a transient SMTP hiccup here must
+        # not fail an otherwise-healthy job the way it would further down.
+        if user:
+            try:
+                send_job_started_email(user.email, job.id)
+            except Exception:
+                logger.warning("Failed to send job-started email for job %s", job.id, exc_info=True)
+
         raw_dir = job.raw_path
         results_dir = os.path.join(settings.data_root, job.user_id, job.id, "results")
         convert_dir = os.path.join(raw_dir, "converted")
@@ -66,19 +87,67 @@ def run_inference_job(self, job_id: str) -> None:
         if job.input_type == "vcf":
             genotype_file = _find_genotype_file(raw_dir, "vcf")
             convert_vcf_to_plink(genotype_file, plink_prefix)
-        else:
+        elif job.input_type == "bgen":
             genotype_file = _find_genotype_file(raw_dir, "bgen")
             sample_file = _find_sample_file(raw_dir)
             convert_bgen_to_plink(genotype_file, sample_file, plink_prefix)
+        else:
+            genotype_file = _find_genotype_file(raw_dir, "plink")
+            in_prefix = genotype_file[: -len(".bed")]
+            requalify_plink(in_prefix, plink_prefix)
+
+        # Sample-count cap: only knowable once the upload is in PLINK form
+        # (a .fam line per sample). Rejects before any further processing.
+        sample_count = count_samples(plink_prefix)
+        if sample_count > settings.max_samples:
+            raise PipelineError(
+                f"Your data has {sample_count} samples, which exceeds the platform's limit of "
+                f"{settings.max_samples}. Please split your data into smaller batches and re-upload."
+            )
+
+        # Pre-flight SNP-overlap check: reject before spending several
+        # minutes running the 15-model ensemble on data we already know is
+        # unreliable (see pipeline.check_snp_overlap).
+        preflight_prefix = os.path.join(convert_dir, "preflight_overlap")
+        overlap_count, overlap_total = check_snp_overlap(plink_prefix, preflight_prefix)
+        if overlap_count < settings.min_reliable_snp_overlap:
+            raise PipelineError(
+                f"Only {overlap_count} of {overlap_total} Diet Network reference SNPs were found "
+                f"in your data (minimum {settings.min_reliable_snp_overlap} required for reliable "
+                "predictions). This is often caused by a sparse genotyping array or a genome build "
+                "other than GRCh38 -- consider imputing your data to increase SNP coverage, then re-upload."
+            )
+
+        # Allele-harmonization check: same extracted .bim the overlap check
+        # just produced, compared against the training panel's reference
+        # alleles. Catches a systematically swapped or strand-flipped
+        # upload, which --real-ref-alleles would otherwise let through with
+        # silently inverted dosage rather than an error (see
+        # pipeline.check_allele_harmonization).
+        dummy_bim_path = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dummy.bim")
+        harmonization = check_allele_harmonization(preflight_prefix + ".bim", dummy_bim_path)
+        compared = harmonization["compared"]
+        mismatched = harmonization["swapped"] + harmonization["flipped"] + harmonization["ambiguous"]
+        if compared and mismatched / compared > settings.max_allele_mismatch_fraction:
+            dominant = max(("swapped", "flipped", "ambiguous"), key=harmonization.get)
+            explanation = {
+                "swapped": "your A1/A2 allele columns appear to be swapped relative to the reference panel",
+                "flipped": "your data appears to be reported on the opposite DNA strand (a strand flip) "
+                "relative to GRCh38",
+                "ambiguous": "many of the mismatched SNPs are A/T or C/G pairs, where a strand flip and an "
+                "allele swap look identical, so the exact cause can't be determined automatically",
+            }[dominant]
+            raise PipelineError(
+                f"{mismatched} of {compared} overlapping SNPs ({mismatched / compared:.0%}) have allele "
+                f"coding that doesn't match the Diet Network reference panel -- {explanation}. Please "
+                "re-harmonize your alleles to match the reference panel (GRCh38, matching strand) and re-upload."
+            )
 
         output_prefix = os.path.join(results_dir, "result")
         predictions_file = run_infer(plink_prefix, output_prefix)
 
-        overlap_count, overlap_total = get_snp_overlap(output_prefix)
         is_reliable = overlap_count >= settings.min_reliable_snp_overlap
         predictions = parse_predictions(predictions_file)
-
-        cleanup_intermediate_files(output_prefix)
 
         job.status = "done"
         job.results_path = predictions_file
