@@ -138,19 +138,35 @@ def check_snp_overlap(plink_prefix: str, tmp_out_prefix: str) -> tuple[int, int]
     with open(panel_file) as f:
         overlap_total = sum(1 for _ in f)
 
-    _run(
-        [
-            settings.plink_path,
-            "--bfile",
-            plink_prefix,
-            "--extract",
-            panel_file,
-            "--make-bed",
-            "--real-ref-alleles",
-            "--out",
-            tmp_out_prefix,
-        ]
-    )
+    cmd = [
+        settings.plink_path,
+        "--bfile",
+        plink_prefix,
+        "--extract",
+        panel_file,
+        "--make-bed",
+        "--real-ref-alleles",
+        "--out",
+        tmp_out_prefix,
+    ]
+    # Not using _run() here: unlike a low-but-nonzero overlap (which PLINK
+    # completes normally, just with a small/empty .bim -- see below), PLINK
+    # exits *non-zero* with "No variants remaining after --extract" when
+    # the overlap is exactly zero. _run() would treat that as a hard
+    # pipeline failure and hide it behind a generic error, instead of the
+    # same "0 of N SNPs found" rejection (and chr-prefix-mismatch hint,
+    # see detect_chr_prefix_mismatch) a low-overlap upload gets.
+    logger.info("Running: %s", " ".join(cmd))
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode != 0:
+        if "No variants remaining after --extract" in proc.stderr:
+            return 0, overlap_total
+        logger.error("Command failed (%s): stdout=%s stderr=%s", cmd[0], proc.stdout[-4000:], proc.stderr[-4000:])
+        raise PipelineError(f"Step '{os.path.basename(cmd[0])}' failed. See worker logs for job diagnostics.")
+    logger.info(proc.stdout[-2000:])
+    if proc.stderr.strip():
+        logger.warning("%s produced stderr despite exit 0: %s", cmd[0], proc.stderr[-4000:])
+
     # Mirrors infer.sh's own check: PLINK can complete without producing a
     # .bim when there's no overlap at all, rather than exiting non-zero.
     if not os.path.isfile(tmp_out_prefix + ".bim"):
@@ -158,6 +174,57 @@ def check_snp_overlap(plink_prefix: str, tmp_out_prefix: str) -> tuple[int, int]
     with open(tmp_out_prefix + ".bim") as f:
         overlap_count = sum(1 for _ in f)
     return overlap_count, overlap_total
+
+
+def _normalize_chrom(chrom: str) -> str:
+    return chrom[3:] if chrom.lower().startswith("chr") else chrom
+
+
+def _read_bim_positions(bim_path: str) -> set[str]:
+    """chrom:pos pairs from a .bim -- columns 1 and 4, which exist in every
+    .bim regardless of what convention its ID column (2) uses. Unlike a SNP
+    ID, chrom+pos is comparable across ID-naming schemes without needing to
+    know which one either side used."""
+    positions = set()
+    with open(bim_path) as f:
+        for line in f:
+            fields = line.split()
+            if len(fields) < 4:
+                continue
+            positions.add(f"{_normalize_chrom(fields[0])}:{fields[3]}")
+    return positions
+
+
+def detect_id_labeling_mismatch(plink_prefix: str) -> bool:
+    """Cheap post-hoc diagnostic for a low-overlap rejection: pure string/set
+    comparison, no extra plink invocation. Only called when check_snp_overlap
+    already failed (see tasks.py), so it adds nothing to the normal/success
+    path.
+
+    check_snp_overlap's --extract matches on the SNP ID column (2) alone, so
+    it's blind to a query using a different ID convention than the panel's
+    "chr1:12345:A:G" -- e.g. no "chr" prefix, or rsIDs -- even when the
+    underlying positions are identical. Comparing chrom+pos instead (see
+    _read_bim_positions) is convention-agnostic: if that overlap is high
+    while the raw ID overlap was low, the data matches and only the
+    labeling differs -- not a genuine low-overlap/wrong-build dataset."""
+    dummy_bim_path = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dummy.bim")
+    panel_file = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dietnet_snps.txt")
+    with open(panel_file) as f:
+        panel_ids = {line.strip() for line in f}
+    panel_positions = _read_bim_positions(dummy_bim_path)
+
+    with open(plink_prefix + ".bim") as f:
+        query_rows = [line.split() for line in f if line.strip()]
+    query_ids = {row[1] for row in query_rows if len(row) > 1}
+    query_positions = {f"{_normalize_chrom(row[0])}:{row[3]}" for row in query_rows if len(row) > 3}
+
+    raw_overlap = len(query_ids & panel_ids)
+    position_overlap = len(query_positions & panel_positions)
+
+    # Only worth mentioning if comparing by position would have made a
+    # material difference -- not just a handful of coincidental matches.
+    return position_overlap >= settings.min_reliable_snp_overlap and position_overlap > raw_overlap * 2
 
 
 _COMPLEMENT = {"A": "T", "T": "A", "C": "G", "G": "C"}

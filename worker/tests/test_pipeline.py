@@ -13,7 +13,7 @@ import pytest
 
 import conftest
 from worker.config import settings
-from worker.pipeline import check_allele_harmonization, check_snp_overlap, count_samples
+from worker.pipeline import check_allele_harmonization, check_snp_overlap, count_samples, detect_id_labeling_mismatch
 
 PLINK_AVAILABLE = os.path.isfile(settings.plink_path)
 PANEL_AVAILABLE = os.path.isdir(os.path.join(settings.dietnet_files_path, "DN_SNPS"))
@@ -120,3 +120,58 @@ def test_check_snp_overlap_positive_control_above_threshold(tmp_path):
     )
     overlap_count, overlap_total = check_snp_overlap(positive_control, str(tmp_path / "out"))
     assert overlap_count >= settings.min_reliable_snp_overlap
+
+
+# --- detect_id_labeling_mismatch -- needs the real panel + dummy.bim, no plink call ---
+
+
+def _real_panel_rows(n=2000):
+    """First n rows of dummy.bim -- real chrom/pos/alleles from the actual
+    reference panel, used below as a base to swap in different ID
+    conventions while keeping genuinely-matching positions."""
+    dummy_bim_path = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dummy.bim")
+    with open(dummy_bim_path) as f:
+        return [line.split() for line in f][:n]
+
+
+@requires_container
+def test_detect_id_labeling_mismatch_true_for_rsid_style_ids(tmp_path):
+    # Same chrom+pos+alleles as the real panel, but rsID-style IDs instead
+    # of the panel's "chr1:pos:ref:alt" convention -- check_snp_overlap's
+    # ID-based --extract would find ~0 overlap here even though the
+    # underlying positions are identical. This is what the old
+    # chr-prefix-only version of this check could NOT catch.
+    bim_path = tmp_path / "query.bim"
+    with open(bim_path, "w") as f:
+        for i, (chrom, _snp_id, cm, pos, a1, a2) in enumerate(_real_panel_rows(), start=1):
+            f.write(f"{chrom}\trs{1000000 + i}\t{cm}\t{pos}\t{a1}\t{a2}\n")
+
+    assert detect_id_labeling_mismatch(str(tmp_path / "query")) is True
+
+
+@requires_container
+def test_detect_id_labeling_mismatch_true_when_ids_missing_chr(tmp_path):
+    bim_path = tmp_path / "query.bim"
+    with open(bim_path, "w") as f:
+        for chrom, snp_id, cm, pos, a1, a2 in _real_panel_rows():
+            stripped = snp_id[3:] if snp_id.startswith("chr") else snp_id  # "chr1:123:A:G" -> "1:123:A:G"
+            f.write(f"{chrom}\t{stripped}\t{cm}\t{pos}\t{a1}\t{a2}\n")
+
+    assert detect_id_labeling_mismatch(str(tmp_path / "query")) is True
+
+
+@requires_container
+def test_detect_id_labeling_mismatch_false_for_genuinely_low_overlap(tmp_path):
+    # low_overlap fixture's IDs and positions already match the panel's own
+    # convention -- its low overlap is real, not a labeling artifact.
+    assert detect_id_labeling_mismatch(os.path.join(conftest.FIXTURES_DIR, "low_overlap")) is False
+
+
+@requires_container
+def test_detect_id_labeling_mismatch_false_when_already_matching(tmp_path):
+    positive_control = os.path.join(
+        conftest.FIXTURES_DIR,
+        "..",
+        "1000G.2504_WGS30x.GSA17k_MHI.intersectGSA.miss10perc.maf0.05.pruned.autosomes.noHLA.phased_imputed",
+    )
+    assert detect_id_labeling_mismatch(positive_control) is False

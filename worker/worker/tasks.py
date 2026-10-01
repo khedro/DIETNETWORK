@@ -14,6 +14,7 @@ from worker.pipeline import (
     convert_bgen_to_plink,
     convert_vcf_to_plink,
     count_samples,
+    detect_id_labeling_mismatch,
     parse_predictions,
     requalify_plink,
     run_infer,
@@ -111,11 +112,20 @@ def run_inference_job(self, job_id: str) -> None:
         preflight_prefix = os.path.join(convert_dir, "preflight_overlap")
         overlap_count, overlap_total = check_snp_overlap(plink_prefix, preflight_prefix)
         if overlap_count < settings.min_reliable_snp_overlap:
+            id_labeling_hint = (
+                " Your data appears to cover the same positions as the reference panel, but under "
+                "different SNP IDs -- the panel uses 'chr<chromosome>:<position>:<ref>:<alt>' "
+                "(e.g. 'chr1:12345:A:G'); yours may be rsIDs, missing the 'chr' prefix, or another "
+                "format. Re-label your SNP IDs to match and re-upload."
+                if detect_id_labeling_mismatch(plink_prefix)
+                else ""
+            )
             raise PipelineError(
                 f"Only {overlap_count} of {overlap_total} Diet Network reference SNPs were found "
                 f"in your data (minimum {settings.min_reliable_snp_overlap} required for reliable "
                 "predictions). This is often caused by a sparse genotyping array or a genome build "
-                "other than GRCh38 -- consider imputing your data to increase SNP coverage, then re-upload."
+                f"other than GRCh38 -- consider imputing your data to increase SNP coverage, then "
+                f"re-upload.{id_labeling_hint}"
             )
 
         # Allele-harmonization check: same extracted .bim the overlap check

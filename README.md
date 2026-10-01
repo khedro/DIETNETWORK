@@ -59,12 +59,19 @@ source <env_name>/bin/activate
 
 ##### 2. Run the inference script
 ```
-bash DIETNETWORK/Dietnet_inference/infer.sh <plink_prefix> <output_prefix> <plink_path> <dietnet_path>
+bash DIETNETWORK/Dietnet_inference/infer.sh <plink_path> <dietnet_code_path> <dietnet_files_path> <plink_prefix> <output_prefix>
 ```
-- `plink_prefix` Prefix of the PLINK dataset (e.g., `mydata` for `mydata.bed/.bim/.fam`)
-- `output_prefix` Prefix for output files
 - `plink_path` Path to the PLINK executable (e.g., `bin/plink`)
-- `dietnet_path` Path to the to the Diet Network inference directory (e.g., `~/Downloads/DIETNETWORK/Dietnet_inference`)
+- `dietnet_code_path` Path to the Diet Network inference scripts in this repo (e.g., `DIETNETWORK/Dietnet_inference`)
+- `dietnet_files_path` Path to the Diet Network files downloaded from Zenodo, containing `DN_SNPS/` and `DN_MODELS/` (e.g., `~/Downloads/Dietnet_inference`)
+- `plink_prefix` Prefix of the PLINK dataset (e.g., `mydata` for `mydata.bed/.bim/.fam`)
+- `output_prefix` Prefix for output files. Use a relative name (e.g., `myresults`), not an absolute path: `infer.sh` reuses it inside its per-model output directory, so an absolute path produces a broken path and the per-model results are silently not saved.
+
+> **Correction (fork):** the upstream README (commit `d69d184`) documented this command as
+> `infer.sh <plink_prefix> <output_prefix> <plink_path> <dietnet_path>`, which does not
+> match the script. `infer.sh` actually takes five arguments in the order shown above
+> (see the argument parsing at the top of `Dietnet_inference/infer.sh`). The usage
+> above has been corrected in this fork; `infer.sh` itself is unchanged.
 
 #### Output files
 At the end of the run, the following files and directories are generated:
