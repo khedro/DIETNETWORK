@@ -152,6 +152,7 @@ the pure unit tests):
 | `tests/preflight_checks.py` | Sections 1–2 — positive control + 2a/2b/2c/2d, run against a live stack |
 | `tests/fcfs_queue_check.py` | Section 4 |
 | `tests/download_concurrency_check.py` | Section 5 |
+| `tests/usage_stats_check.sh` | `jobs.sample_count` is recorded and survives the retention purge; `ops/usage_stats.sql` totals match direct counts (runs last — it purges the positive-control job) |
 | `tests/run_all.sh` | Runs everything above end to end against an isolated, throwaway compose stack (`--keep` to leave it up for debugging) |
 
 ## Results (last full run: 2026-09-18)

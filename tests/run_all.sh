@@ -205,6 +205,17 @@ else
 fi
 
 echo
+echo "=== Usage statistics: sample_count + ops/usage_stats.sql (runs last: purges the positive-control job) ==="
+if [ -f "$TMP_DIR/positive.json" ]; then
+    JOB_ID=$("$PY" -c "import json,sys; print(json.load(open(sys.argv[1]))['job_id'])" "$TMP_DIR/positive.json")
+    ./tests/usage_stats_check.sh "$JOB_ID"
+    record "usage-stats" $?
+else
+    echo "Skipped: no completed job from the positive-control step." >&2
+    record "usage-stats" 1
+fi
+
+echo
 echo "================= SUMMARY ================="
 overall=0
 for r in "${RESULTS[@]}"; do

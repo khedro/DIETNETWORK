@@ -205,6 +205,7 @@ def run_inference_job(self, job_id: str) -> None:
         job.snp_overlap_count = overlap_count
         job.snp_overlap_total = overlap_total
         job.is_reliable = is_reliable
+        job.sample_count = sample_count
         job.predictions = {"consensus_threshold": settings.consensus_threshold, "rows": table_rows}
         job.completed_at = utcnow()
         session.commit()

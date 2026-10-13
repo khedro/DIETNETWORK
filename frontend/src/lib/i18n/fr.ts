@@ -14,13 +14,13 @@ export const fr: Record<TranslationKey, string> = {
 
 	'home.title': "Inférence d'ascendance génétique, propulsée par Diet Network",
 	'home.subtitle':
-		"Téléversez votre fichier de génotypes VCF ou bgen et obtenez des prédictions d'ascendance grâce à l'ensemble Diet Network pré-entraîné du HussinLab — 15 modèles entraînés sur 1000 Genomes, couvrant 24 populations.",
+		"Téléversez vos fichiers de génotypes VCF, bgen ou PLINK et obtenez des prédictions d'ascendance grâce à l'ensemble Diet Network pré-entraîné du HussinLab — 15 modèles entraînés sur 1000 Genomes, couvrant 24 populations.",
 	'home.cta.start': 'Démarrer une nouvelle analyse',
 	'home.cta.createAccount': 'Créer un compte gratuit',
 	'home.cta.login': 'Se connecter',
 	'home.feature1.title': 'Utilisez vos propres génotypes',
 	'home.feature1.prefix':
-		'Accepte les fichiers .vcf, .vcf.gz et .bgen (avec un fichier .sample). Les génotypes doivent être harmonisés avec',
+		'Accepte les fichiers .vcf, .vcf.gz, .bgen (avec un fichier .sample) et PLINK (.bed/.bim/.fam). Les génotypes doivent être harmonisés avec',
 	'home.feature2.title': "Inférence asynchrone par ensemble de modèles",
 	'home.feature2.body':
 		'Chaque tâche exécute 15 modèles séquentiellement — généralement quelques minutes. Suivez l’état en direct depuis votre tableau de bord et recevez un courriel lorsque les résultats sont prêts.',

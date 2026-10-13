@@ -14,12 +14,12 @@ export const en = {
 
 	'home.title': 'Genetic ancestry inference, powered by Diet Network',
 	'home.subtitle':
-		"Upload your VCF or bgen genotype file and get ancestry predictions from HussinLab's pretrained Diet Network ensemble — 15 models trained on 1000 Genomes, covering 24 populations.",
+		"Upload your VCF, bgen, or PLINK genotype files and get ancestry predictions from HussinLab's pretrained Diet Network ensemble — 15 models trained on 1000 Genomes, covering 24 populations.",
 	'home.cta.start': 'Start a new analysis',
 	'home.cta.createAccount': 'Create a free account',
 	'home.cta.login': 'Log in',
 	'home.feature1.title': 'Bring your own genotypes',
-	'home.feature1.prefix': 'Accepts .vcf, .vcf.gz, and .bgen (with a .sample file). Genotypes must be harmonized to',
+	'home.feature1.prefix': 'Accepts .vcf, .vcf.gz, .bgen (with a .sample file), and PLINK (.bed/.bim/.fam). Genotypes must be harmonized to',
 	'home.feature2.title': 'Async, ensemble inference',
 	'home.feature2.body':
 		'Each job runs 15 models sequentially — typically a few minutes. Track status live from your dashboard and get an email when results are ready.',
