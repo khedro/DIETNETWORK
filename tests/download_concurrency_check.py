@@ -3,7 +3,7 @@
 
 Needs one already-"done" job -- pass --job-id/--access-token from
 preflight_checks.py's --case positive --json-out output (see run_all.sh).
-Fires more parallel GET /jobs/{id}/download requests than
+Fires more parallel POST /jobs/{id}/download requests than
 MAX_CONCURRENT_DOWNLOADS allows and checks exactly that many succeed.
 
 This is a race-condition test (app/concurrency.py's whole point is
@@ -19,24 +19,28 @@ import argparse
 import concurrent.futures
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from lib import session_from_access_token  # noqa: E402
+from lib import ZIP_PASSWORD, session_from_access_token  # noqa: E402
 
 
-def one_download(base_url: str, job_id: str, token: str) -> int:
+def one_download(base_url: str, job_id: str, token: str, timeout: float) -> tuple[int, float]:
     # A fresh session/cookie per request -- mirrors independent concurrent
     # users, and avoids requests.Session's connection pooling serializing
     # what's supposed to be a genuinely concurrent burst.
     session = session_from_access_token(base_url, token)
-    resp = session.get(f"{base_url}/jobs/{job_id}/download", timeout=60)
+    start = time.time()
+    resp = session.post(
+        f"{base_url}/jobs/{job_id}/download", json={"password": ZIP_PASSWORD}, timeout=timeout
+    )
     resp.close()
-    return resp.status_code
+    return resp.status_code, time.time() - start
 
 
-def run_round(base_url: str, job_id: str, token: str, n_requests: int) -> list[int]:
+def run_round(base_url: str, job_id: str, token: str, n_requests: int, timeout: float) -> list[tuple[int, float]]:
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_requests) as pool:
-        futures = [pool.submit(one_download, base_url, job_id, token) for _ in range(n_requests)]
+        futures = [pool.submit(one_download, base_url, job_id, token, timeout) for _ in range(n_requests)]
         return [f.result() for f in futures]
 
 
@@ -48,6 +52,13 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=9, help="MAX_CONCURRENT_DOWNLOADS the stack is running with")
     parser.add_argument("--requests", type=int, default=15, help="parallel download requests to fire per round")
     parser.add_argument("--rounds", type=int, default=3)
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=600,
+        help="per-request client timeout; each accepted request builds and streams a full encrypted "
+        "results zip (~150 MB for the 2504-sample positive control), so 9 at once can take minutes",
+    )
     args = parser.parse_args()
 
     if args.requests <= args.limit:
@@ -56,7 +67,10 @@ def main() -> None:
 
     all_ok = True
     for round_num in range(1, args.rounds + 1):
-        codes = run_round(args.base_url, args.job_id, args.access_token, args.requests)
+        results = run_round(args.base_url, args.job_id, args.access_token, args.requests, args.timeout)
+        codes = [code for code, _ in results]
+        ok_times = [t for code, t in results if code == 200]
+        rejected_times = [t for code, t in results if code == 429]
         ok_count = codes.count(200)
         rejected_count = codes.count(429)
         other = [c for c in codes if c not in (200, 429)]
@@ -67,6 +81,8 @@ def main() -> None:
             f"[{status}] download_concurrency round {round_num}/{args.rounds}: "
             f"{ok_count} x 200, {rejected_count} x 429"
             + (f", unexpected codes: {other}" if other else "")
+            + (f" | 200s took {min(ok_times):.1f}-{max(ok_times):.1f}s" if ok_times else "")
+            + (f", 429s answered in <= {max(rejected_times):.2f}s" if rejected_times else "")
         )
 
     print(f"[{'PASS' if all_ok else 'FAIL'}] download_concurrency: {args.rounds} round(s), limit={args.limit}")

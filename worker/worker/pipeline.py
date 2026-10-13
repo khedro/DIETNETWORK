@@ -4,11 +4,10 @@ structured predictions. Every subprocess call is logged; nothing here talks
 to the network at request time (models/SNP files are baked into the image
 at build time -- see ops/scripts/fetch_zenodo_models.sh).
 """
+import csv
 import logging
 import os
 import subprocess
-
-import pandas as pd
 
 from worker.config import settings
 
@@ -19,7 +18,9 @@ class PipelineError(Exception):
     """Raised for any pipeline failure; message is safe to show to end users."""
 
 
-def _run(cmd: list[str], cwd: str | None = None) -> None:
+def _run(cmd: list[str], cwd: str | None = None) -> str:
+    """Runs cmd, raising PipelineError on a nonzero exit. Returns stdout so
+    callers can keep it (run_infer puts infer.sh's output in the job log)."""
     logger.info("Running: %s", " ".join(cmd))
     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     if proc.returncode != 0:
@@ -33,6 +34,7 @@ def _run(cmd: list[str], cwd: str | None = None) -> None:
     # nonzero return code, or the real traceback never reaches the logs.
     if proc.stderr.strip():
         logger.warning("%s produced stderr despite exit 0: %s", cmd[0], proc.stderr[-4000:])
+    return proc.stdout
 
 
 def convert_vcf_to_plink(vcf_path: str, out_prefix: str) -> str:
@@ -289,7 +291,118 @@ def check_allele_harmonization(extracted_bim_path: str, dummy_bim_path: str) -> 
     return counts
 
 
-def run_infer(plink_prefix: str, output_prefix: str) -> str:
+def _alleles_compatible(query: tuple[str, str], reference: tuple[str, str]) -> bool:
+    """True if the query's alleles are the reference's, in either order or on
+    the opposite strand. A '0' allele (monomorphic in the upload) matches if
+    the other allele does. Swaps/flips still count as compatible here on
+    purpose: relabeling them lets check_allele_harmonization see them and
+    reject a systematically mis-harmonized file with a clear message,
+    instead of those SNPs silently dropping out of the overlap."""
+    ref_set = set(reference)
+    comp_set = {_complement(a) for a in reference}
+    known = {a for a in query if a != "0"}
+    if not known:
+        return False
+    return known <= ref_set or known <= comp_set
+
+
+def relabel_snp_ids(plink_prefix: str, dummy_bim_path: str) -> dict[str, int]:
+    """Rewrites the SNP ID column (2) of <plink_prefix>.bim to the panel's
+    'chr<chrom>:<pos>:<ref>:<alt>' IDs, matching on chromosome + position
+    (+ compatible alleles, to tell apart variants at the same position).
+    infer.sh and check_snp_overlap match on ID alone, so without this an
+    upload labeled with rsIDs or without the 'chr' prefix gets ~0 overlap
+    even when it covers the panel's positions.
+
+    Only the .bim text is rewritten: .bed genotypes are stored in .bim row
+    order, so IDs can change without touching the genotypes. Only ever
+    called on the platform's own converted copy, never the user's upload.
+
+    Returns counts: total, already_matching, relabeled, no_position_match,
+    allele_mismatch (position in the panel, alleles not compatible),
+    duplicate_skipped (would duplicate an ID already present)."""
+    by_position: dict[str, list[tuple[str, str, str]]] = {}
+    panel_ids: set[str] = set()
+    with open(dummy_bim_path) as f:
+        for line in f:
+            fields = line.split()
+            if len(fields) < 6:
+                continue
+            panel_ids.add(fields[1])
+            key = f"{_normalize_chrom(fields[0])}:{fields[3]}"
+            by_position.setdefault(key, []).append((fields[1], fields[4].upper(), fields[5].upper()))
+
+    bim_path = plink_prefix + ".bim"
+    with open(bim_path) as f:
+        rows = [line.rstrip("\n").split("\t") if "\t" in line else line.split() for line in f if line.strip()]
+
+    counts = {
+        "total": len(rows),
+        "already_matching": 0,
+        "relabeled": 0,
+        "no_position_match": 0,
+        "allele_mismatch": 0,
+        "duplicate_skipped": 0,
+    }
+
+    # IDs already right are reserved first, so a relabel can never collide
+    # with a row that was correct to begin with.
+    used_ids = {row[1] for row in rows if len(row) >= 6 and row[1] in panel_ids}
+
+    for row in rows:
+        if len(row) < 6:
+            continue
+        if row[1] in panel_ids:
+            counts["already_matching"] += 1
+            continue
+        candidates = by_position.get(f"{_normalize_chrom(row[0])}:{row[3]}")
+        if not candidates:
+            counts["no_position_match"] += 1
+            continue
+        query_alleles = (row[4].upper(), row[5].upper())
+        compatible = [c for c in candidates if _alleles_compatible(query_alleles, (c[1], c[2]))]
+        if not compatible:
+            counts["allele_mismatch"] += 1
+            continue
+        new_id = compatible[0][0]
+        if new_id in used_ids:
+            counts["duplicate_skipped"] += 1
+            continue
+        row[1] = new_id
+        used_ids.add(new_id)
+        counts["relabeled"] += 1
+
+    tmp_path = bim_path + ".relabel.tmp"
+    with open(tmp_path, "w") as f:
+        for row in rows:
+            f.write("\t".join(row) + "\n")
+    os.replace(tmp_path, bim_path)
+    return counts
+
+
+def count_position_overlap(plink_prefix: str, dummy_bim_path: str) -> int:
+    """Number of panel positions (chrom:pos) present in the upload, whatever
+    its SNP IDs -- reported in the job log next to the ID-based overlap."""
+    return len(_read_bim_positions(plink_prefix + ".bim") & _read_bim_positions(dummy_bim_path))
+
+
+def compute_sample_missing_rates(plink_prefix: str, out_prefix: str) -> dict[str, float]:
+    """Per-sample missing rate over the SNPs present in plink_prefix -- called
+    on the overlap-extracted set, so the rate is relative to the overlap
+    (specifications.docx: "Missing rate calculé par rapport à l'overlap").
+    Keyed by IID, which is the sample name infer.sh's predictions use."""
+    _run([settings.plink_path, "--bfile", plink_prefix, "--missing", "--out", out_prefix])
+    rates: dict[str, float] = {}
+    with open(out_prefix + ".imiss") as f:
+        next(f)  # header: FID IID MISS_PHENO N_MISS N_GENO F_MISS
+        for line in f:
+            fields = line.split()
+            if len(fields) >= 6:
+                rates[fields[1]] = float(fields[5])
+    return rates
+
+
+def run_infer(plink_prefix: str, output_prefix: str) -> tuple[str, str]:
     """Runs Dietnet_inference/infer.sh with the REAL argument order (the
     README's order is wrong -- verified against the script itself):
 
@@ -305,12 +418,14 @@ def run_infer(plink_prefix: str, output_prefix: str) -> str:
     nothing to read -- infer.sh doesn't check those exit codes, so it still
     prints "completed" and exits 0. We run with cwd set to output_prefix's
     directory (below) so a relative name still lands in the right place.
+
+    Returns (predictions_file, infer.sh stdout).
     """
     infer_script = os.path.join(settings.dietnet_code_path, "infer.sh")
     output_dir = os.path.dirname(output_prefix)
     output_name = os.path.basename(output_prefix)
     os.makedirs(output_dir, exist_ok=True)
-    _run(
+    stdout = _run(
         [
             "bash",
             infer_script,
@@ -325,11 +440,146 @@ def run_infer(plink_prefix: str, output_prefix: str) -> str:
     predictions_file = f"{output_prefix}_dietnet_predictions.txt"
     if not os.path.isfile(predictions_file):
         raise PipelineError("Inference completed without producing a predictions file.")
-    return predictions_file
+    return predictions_file, stdout
 
 
-def parse_predictions(predictions_file: str) -> list[dict]:
-    """Parses <output_prefix>_dietnet_predictions.txt (tab-delimited: sample,
-    model1..model15 population calls, all_models summary) into JSON-able rows."""
-    df = pd.read_csv(predictions_file, sep="\t")
-    return df.to_dict(orient="records")
+# --- Results table (specifications.docx, "Tableau prédictions") ---
+
+# 1KGP superpopulation of each of the 24 Diet Network labels. Listed per
+# continent in the order of the paper's Fig. 5 axes; this is also the
+# column order of the per-population counts in the results table.
+POPULATIONS_BY_CONTINENT: dict[str, list[str]] = {
+    "AFR": ["YRI", "ESN", "GWD", "LWK", "MSL", "ACB", "ASW"],
+    "EUR": ["IBS", "CEUGBR", "TSI", "FIN"],
+    "SAS": ["PJL", "BEB", "GIH", "STUITU"],
+    "EAS": ["CHB", "CHS", "CDX", "KHV", "JPT"],
+    "AMR": ["MXL", "CLM", "PEL", "PUR"],
+}
+CONTINENT_OF = {pop: continent for continent, pops in POPULATIONS_BY_CONTINENT.items() for pop in pops}
+CONTINENT_COLUMNS = ["EUR", "AFR", "SAS", "EAS", "AMR"]  # column order from specifications.docx
+POPULATION_COLUMNS = [pop for pops in POPULATIONS_BY_CONTINENT.values() for pop in pops]
+RESULTS_TABLE_COLUMNS = (
+    ["Sample", "Missing rate (%)", "Continent consensus", "Population consensus"]
+    + CONTINENT_COLUMNS
+    + POPULATION_COLUMNS
+)
+N_MODELS = 15
+
+
+def _consensus(counts: dict[str, int], threshold: int) -> str:
+    """The label at least `threshold` of the 15 models agree on, else "NA".
+    With threshold > 7 at most one label can qualify."""
+    label, votes = max(counts.items(), key=lambda kv: kv[1])
+    return label if votes >= threshold else "NA"
+
+
+def build_results_table(
+    predictions_file: str, missing_rates: dict[str, float], consensus_threshold: int
+) -> list[dict]:
+    """One row per sample from infer.sh's <prefix>_dietnet_predictions.txt
+    (columns: samples, model1..model15, all_models): missing rate, continent
+    and population consensus, and how many of the 15 models voted for each
+    continent and each population. A sample with no missing-rate entry gets
+    "NA" there rather than failing the job."""
+    rows = []
+    with open(predictions_file, newline="") as f:
+        for record in csv.DictReader(f, delimiter="\t"):
+            votes = [record[f"model{i}"] for i in range(1, N_MODELS + 1)]
+            unknown = [v for v in votes if v not in CONTINENT_OF]
+            if unknown:
+                raise PipelineError("Inference produced an unrecognized population label.")
+            pop_counts = {pop: votes.count(pop) for pop in POPULATION_COLUMNS}
+            continent_counts = {c: sum(pop_counts[p] for p in POPULATIONS_BY_CONTINENT[c]) for c in CONTINENT_COLUMNS}
+
+            sample = record["samples"]
+            rate = missing_rates.get(sample)
+            row = {
+                "Sample": sample,
+                "Missing rate (%)": round(rate * 100, 2) if rate is not None else "NA",
+                "Continent consensus": _consensus(continent_counts, consensus_threshold),
+                "Population consensus": _consensus(pop_counts, consensus_threshold),
+            }
+            row.update(continent_counts)
+            row.update(pop_counts)
+            rows.append(row)
+    return rows
+
+
+def write_results_table(path: str, rows: list[dict]) -> None:
+    with open(path, "w") as f:
+        f.write("\t".join(RESULTS_TABLE_COLUMNS) + "\n")
+        for row in rows:
+            f.write("\t".join(str(row[c]) for c in RESULTS_TABLE_COLUMNS) + "\n")
+
+
+# --- Job log (specifications.docx, "Log file") ---
+
+
+def write_job_log(path: str, info: dict) -> None:
+    """Human-readable summary of one job, shipped in the results zip. `info`
+    is assembled by tasks.run_inference_job; keys are documented there."""
+    h = info["harmonization"]
+    r = info["relabel"]
+    rates = [v for v in info["missing_rates"].values()]
+    lines = [
+        "Diet Network ancestry inference -- job log",
+        "=" * 44,
+        f"Job ID:                  {info['job_id']}",
+        f"Generated (UTC):         {info['generated_at']}",
+        f"Input type:              {info['input_type']}",
+        f"Samples:                 {info['sample_count']}",
+        "",
+        "SNPs",
+        "----",
+        f"In upload after QC (--geno {settings.geno_missingness_threshold}): {r['total']}",
+        f"Diet Network panel:      {info['overlap_total']}",
+        f"Overlap by position:     {info['overlap_by_position']} (chromosome + position, any SNP ID)",
+        f"Overlap by ID:           {info['overlap_count']} (used for inference)",
+        f"Overlap by alleles:      {h['matched']} of {h['compared']} compared SNPs have the panel's exact A1/A2",
+        f"Minimum for reliability: {settings.min_reliable_snp_overlap}",
+        f"Missing-SNP scale factor: {info['overlap_total'] / info['overlap_count']:.6f} (panel SNPs / overlapping SNPs)",
+        "",
+        "SNP ID relabeling (chromosome + position -> panel ID)",
+        "-----------------------------------------------------",
+        f"Already matching:        {r['already_matching']}",
+        f"Relabeled:               {r['relabeled']}",
+        f"Position not in panel:   {r['no_position_match']}",
+        f"Allele mismatch at a panel position (not relabeled): {r['allele_mismatch']}",
+        f"Would duplicate an ID (not relabeled): {r['duplicate_skipped']}",
+        "",
+        "Allele harmonization (overlapping SNPs vs panel)",
+        "------------------------------------------------",
+        f"Compared:   {h['compared']}",
+        f"Matched:    {h['matched']}",
+        f"Swapped:    {h['swapped']}",
+        f"Flipped:    {h['flipped']}",
+        f"Ambiguous:  {h['ambiguous']} (A/T or C/G)",
+        f"Mismatched: {h['mismatched']}",
+        "",
+        "Per-sample missing rate (over the overlapping SNPs)",
+        "---------------------------------------------------",
+    ]
+    if rates:
+        lines += [
+            f"Mean:   {100 * sum(rates) / len(rates):.2f}%",
+            f"Max:    {100 * max(rates):.2f}%",
+        ]
+    else:
+        lines.append("Not available")
+    lines += [
+        "",
+        "Predictions",
+        "-----------",
+        f"Models in ensemble:  {N_MODELS}",
+        f"Consensus threshold: {info['consensus_threshold']} of {N_MODELS} models",
+        f"Continent consensus reached:  {info['continent_consensus_count']} of {info['sample_count']} samples",
+        f"Population consensus reached: {info['population_consensus_count']} of {info['sample_count']} samples",
+        f"Reliable (overlap >= {settings.min_reliable_snp_overlap}): {'yes' if info['is_reliable'] else 'NO'}",
+        "",
+        "infer.sh output",
+        "---------------",
+        info["infer_stdout"].rstrip(),
+        "",
+    ]
+    with open(path, "w") as f:
+        f.write("\n".join(lines))

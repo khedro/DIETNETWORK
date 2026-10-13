@@ -34,6 +34,8 @@ frontend/.svelte-kit/
 
 # --- Testing (see TESTING.md / tests/) ---
 tests/.volumes-test/
+tests/.tmp/
+tests/.venv/
 dataTest/fixtures/
 
 # Pulumi

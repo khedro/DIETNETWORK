@@ -60,3 +60,9 @@ class JobDetailOut(JobOut):
     # while status == queued. Not present on the /jobs list to avoid an N+1
     # count query there.
     queue_position: int | None = None
+
+
+class DownloadRequest(BaseModel):
+    # Password the results zip is AES-256 encrypted with (app/results_zip.py).
+    # Chosen by the user at download time and never stored.
+    password: str = Field(min_length=8, max_length=128)

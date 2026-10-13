@@ -2,7 +2,7 @@
 title: Web platform (backend, frontend, data governance)
 type: code
 sources: [code]
-updated: 2026-09-28
+updated: 2026-10-09
 ---
 
 # Web platform
@@ -14,15 +14,62 @@ Branch `webPlatform`.
 
 ## Topology
 
+8 containers on one VM ([docker-compose.yml](../../docker-compose.yml)), split across
+two Docker networks: `web` (caddy, frontend, backend — the only one with published
+ports) and `internal` (postgres, redis, worker, beat — no route to the host network).
+MailHog is a 9th, dev/local-test/CI-only container (added by the dev/local-test/test
+overlays, see [Deployment](deployment.md)); production sends mail through a real SMTP
+relay instead.
+
 ```
-Internet → Floating IP → Caddy (TLS) → SvelteKit frontend
-                                     → FastAPI backend → Postgres
-                                                       → Redis → Celery worker(s) → encrypted volume
-                                                                 Celery beat (30-day cleanup)
+                         Internet
+                            │
+                      ┌─────▼─────┐
+                      │   caddy   │  reverse proxy, TLS
+                      │ (web net) │  only container with published ports
+                      └──┬─────┬──┘
+                 ┌────────┘     └────────┐
+         ┌───────▼──────┐        ┌───────▼──────┐
+         │   frontend   │  HTTP  │   backend    │   FastAPI
+         │  (SvelteKit) │───────▶│  (FastAPI)    │   (auth, uploads, /jobs, /download)
+         │  (web net)   │ fetch  │ (web+internal)│
+         └──────────────┘        └───┬───────┬──┘
+                                      │        │
+                        SQL (asyncpg) │        │ celery_app.send_task(...)
+                                      │        │ (Celery protocol over Redis, NOT HTTP)
+                             ┌────────▼─┐    ┌─▼────────┐
+                             │ postgres │    │  redis   │  broker + queue
+                             │(internal)│    │(internal)│
+                             └──────────┘    └───┬───┬──┘
+                                                  │   │
+                                     dequeue task │   │ same broker
+                                                  │   │
+                                           ┌───────▼┐ ┌▼────────┐
+                                           │ worker │ │  beat   │  daily cron:
+                                           │(Celery)│ │(Celery) │  30-day cleanup
+                                           │(internal)│(internal)│
+                                           └───┬────┘ └────┬────┘
+                              SQL (psycopg2)   │           │ SQL
+                                     ┌─────────▼───────────▼┐
+                                     │       postgres        │ (same DB, shared)
+                                     └────────────────────────┘
+                                           │
+                                  SMTP     │  (worker + backend both send mail)
+                                     ┌─────▼─────┐
+                                     │  mailhog  │  (dev/test only; real relay in prod)
+                                     └───────────┘
 ```
 
-Postgres and Redis publish no ports and sit only on the `internal` network
-([docker-compose.yml](../../docker-compose.yml)).
+Only the browser-facing edge is FastAPI/HTTP. Everything behind it uses each
+service's native protocol, not REST calls between containers:
+
+| Link | Protocol |
+|---|---|
+| Browser → Caddy → backend | HTTP, FastAPI endpoints (`/auth/*`, `/uploads`, `/jobs/*`) |
+| Caddy → frontend | HTTP (serves the built SvelteKit app) |
+| backend → worker | **Not HTTP.** `celery_app.send_task(...)` pushes a message onto Redis; the worker dequeues it. No FastAPI on either side. |
+| backend/worker → postgres | SQL (asyncpg from backend, psycopg2 from worker/beat — different drivers, same DB) |
+| backend/worker → mailhog / SMTP relay | SMTP, not HTTP |
 
 ## Components
 

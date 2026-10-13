@@ -104,7 +104,35 @@ export const api = {
 		return request<Job>('/uploads', { method: 'POST', body: form });
 	},
 
-	// Zips everything infer.sh produced (predictions, SNP overlap lists,
-	// hdf5 dataset, per-model .npz outputs) -- see README's "Output files".
-	downloadUrl: (jobId: string) => `${PUBLIC_API_BASE_URL}/jobs/${jobId}/download`
+	// AES-256 encrypted zip of every result file (results table, job log,
+	// predictions, SNP overlap lists, hdf5, per-model .npz), locked with a
+	// password the user picks here. POST so the password stays out of URLs.
+	// Fetched as a blob and saved via a temporary link, since a plain <a href>
+	// can't send a request body.
+	downloadResults: async (jobId: string, password: string) => {
+		const res = await fetch(`${PUBLIC_API_BASE_URL}/jobs/${jobId}/download`, {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ password })
+		});
+		if (!res.ok) {
+			let message = `Request failed (${res.status})`;
+			try {
+				const body = await res.json();
+				message = typeof body.detail === 'string' ? body.detail : message;
+			} catch {
+				/* ignore non-JSON error bodies */
+			}
+			throw new ApiError(res.status, message);
+		}
+		const url = URL.createObjectURL(await res.blob());
+		const link = document.createElement('a');
+		link.href = url;
+		link.download = `${jobId}_dietnet_results.zip`;
+		document.body.appendChild(link);
+		link.click();
+		link.remove();
+		URL.revokeObjectURL(url);
+	}
 };

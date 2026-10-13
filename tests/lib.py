@@ -73,6 +73,7 @@ def extract_url(item: dict, path_hint: str) -> str:
 # --- Auth flow ---
 
 PASSWORD = "TestPassw0rd1234"  # meets SignupRequest.password_strength (upper/lower/digit, >=12 chars)
+ZIP_PASSWORD = "zip-Passw0rd-test"  # results-zip encryption password (DownloadRequest: 8-128 chars)
 
 
 def signup_verify_login(base_url: str, mailhog_url: str, email: str, timeout: float = 30) -> requests.Session:

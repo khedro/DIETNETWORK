@@ -1,6 +1,5 @@
 import os
 import tempfile
-import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
@@ -12,9 +11,10 @@ from starlette.concurrency import run_in_threadpool
 from app.concurrency import acquire_download_slot, release_download_slot
 from app.config import get_settings
 from app.database import get_db
-from app.deps import get_current_verified_user
-from app.models import Job, JobStatus, User
-from app.schemas import JobDetailOut, JobOut
+from app.deps import client_ip, get_current_verified_user
+from app.models import AuditLog, Job, JobStatus, User
+from app.results_zip import build_encrypted_zip
+from app.schemas import DownloadRequest, JobDetailOut, JobOut
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 settings = get_settings()
@@ -52,23 +52,19 @@ async def get_job(job_id: str, user: User = Depends(get_current_verified_user), 
     return out
 
 
-def _build_results_zip(results_dir: str, dest_path: str) -> None:
-    """Zips every file under results_dir (predictions, SNP overlap lists,
-    the hdf5 dataset, and the per-model .npz outputs -- see README's "Output
-    files" section) preserving the DIETNET_RESULTS_BY_MODEL/ subdirectory
-    structure. Runs in a thread pool -- it's blocking file I/O and can be a
-    few hundred MB, so it must not run on the async event loop."""
-    with zipfile.ZipFile(dest_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for root, _dirs, files in os.walk(results_dir):
-            for name in files:
-                full_path = os.path.join(root, name)
-                zf.write(full_path, arcname=os.path.relpath(full_path, results_dir))
-
-
-@router.get("/{job_id}/download")
+@router.post("/{job_id}/download")
 async def download_results(
-    job_id: str, user: User = Depends(get_current_verified_user), db: AsyncSession = Depends(get_db)
+    job_id: str,
+    body: DownloadRequest,
+    user: User = Depends(get_current_verified_user),
+    request_ip: str = Depends(client_ip),
+    db: AsyncSession = Depends(get_db),
 ):
+    """Streams every result file (results table, job log, predictions, SNP
+    overlap lists, hdf5 dataset, per-model .npz) as an AES-256 encrypted zip
+    under the password the user supplies. POST so the password travels in
+    the request body, never in a URL or access log. The password is not
+    stored anywhere."""
     job = await _get_owned_job(job_id, user, db)
     results_dir = job.results_path and os.path.dirname(job.results_path)
     if not results_dir or not os.path.isdir(results_dir):
@@ -88,7 +84,9 @@ async def download_results(
     fd, tmp_path = tempfile.mkstemp(suffix=".zip")
     os.close(fd)
     try:
-        await run_in_threadpool(_build_results_zip, results_dir, tmp_path)
+        await run_in_threadpool(build_encrypted_zip, results_dir, tmp_path, body.password)
+        db.add(AuditLog(user_id=user.id, event="results_downloaded", ip_address=request_ip, detail=job_id))
+        await db.commit()
     except Exception:
         os.remove(tmp_path)
         await release_download_slot(slot)

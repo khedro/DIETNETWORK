@@ -95,6 +95,20 @@ def main() -> None:
     symlink_unchanged(".fam", swapped_prefix)
     print("swapped.{bed,bim,fam}: full SNP set, A1/A2 columns swapped")
 
+    # -- 2e: same SNPs/positions/alleles, but rsID-style SNP IDs instead of the
+    # panel's chr:pos:ref:alt. Before SNP ID relabeling this got 0 overlap by
+    # ID and was rejected; the worker should now rewrite the IDs by position
+    # and run inference normally. --
+    rsid_prefix = os.path.join(OUT_DIR, "rsid_labels")
+    with open(rsid_prefix + ".bim", "w") as out:
+        for i, line in enumerate(bim_lines, start=1):
+            fields = line.rstrip("\n").split()
+            fields[1] = f"rs{9000000 + i}"
+            out.write("\t".join(fields) + "\n")
+    symlink_unchanged(".bed", rsid_prefix)
+    symlink_unchanged(".fam", rsid_prefix)
+    print("rsid_labels.{bed,bim,fam}: full SNP set, SNP IDs replaced with rsID-style labels")
+
     print()
     print("2c/2d: no fixture needed -- see tests/run_all.sh (temporarily lowers")
     print("MAX_SAMPLES / MAX_UPLOAD_MB and re-uploads the unmodified dataTest trio).")

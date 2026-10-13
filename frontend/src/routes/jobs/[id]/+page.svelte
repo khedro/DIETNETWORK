@@ -10,6 +10,32 @@
 	let error = '';
 	let interval: ReturnType<typeof setInterval>;
 
+	const MIN_ZIP_PASSWORD = 8; // matches DownloadRequest in backend/app/schemas.py
+	let zipPassword = '';
+	let zipPasswordConfirm = '';
+	let downloading = false;
+	let downloadError = '';
+
+	async function download() {
+		downloadError = '';
+		if (zipPassword.length < MIN_ZIP_PASSWORD) {
+			downloadError = $t('jobDetail.zipPasswordTooShort');
+			return;
+		}
+		if (zipPassword !== zipPasswordConfirm) {
+			downloadError = $t('jobDetail.zipPasswordMismatch');
+			return;
+		}
+		downloading = true;
+		try {
+			await api.downloadResults(job!.id, zipPassword);
+		} catch (e) {
+			downloadError = e instanceof ApiError ? e.message : $t('jobDetail.downloadError');
+		} finally {
+			downloading = false;
+		}
+	}
+
 	async function refresh() {
 		try {
 			job = await api.getJob($page.params.id);
@@ -64,9 +90,24 @@
 		</div>
 	{:else if job.status === 'done'}
 		<div class="stack">
-			<a class="btn" href={api.downloadUrl(job.id)} target="_blank" rel="noreferrer">
-				{$t('jobDetail.download')}
-			</a>
+			<form class="card stack" on:submit|preventDefault={download}>
+				<p>{$t('jobDetail.zipPasswordIntro')}</p>
+				<label>
+					{$t('jobDetail.zipPassword')}
+					<input type="password" bind:value={zipPassword} autocomplete="new-password" minlength={MIN_ZIP_PASSWORD} required />
+				</label>
+				<label>
+					{$t('jobDetail.zipPasswordConfirm')}
+					<input type="password" bind:value={zipPasswordConfirm} autocomplete="new-password" required />
+				</label>
+				{#if downloadError}
+					<p class="error-banner">{downloadError}</p>
+				{/if}
+				<button class="btn" type="submit" disabled={downloading}>
+					{downloading ? $t('jobDetail.downloading') : $t('jobDetail.download')}
+				</button>
+				<p class="muted">{$t('jobDetail.zipOpenHint')}</p>
+			</form>
 
 			{#if job.is_reliable === false}
 				<div class="warn-banner">

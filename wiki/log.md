@@ -40,3 +40,12 @@ Team spec (French): user flow, processing, final results, figures. Checked each 
 against backend routers (uploads, jobs), frontend job/upload pages, worker pipeline.
 Created analysis/spec-status. Main gaps: results table with consensus and missing rate,
 log file, encrypted zip, figures, 1KGP reference data, chr+pos ID rewrite.
+
+## [2026-10-09] update | web-platform topology expanded
+Replaced the one-line Topology diagram in code/web-platform.md with the full 8-container
+layout (caddy/frontend/backend/worker/beat/postgres/redis + dev-only mailhog), the `web`
+vs `internal` network split, and a per-link protocol table. Confirms only the
+browser-facing edge is FastAPI/HTTP; backend→worker is Celery over Redis (not HTTP),
+DB access is SQL, mail is SMTP. Verified network/service names against docker-compose.yml
+and confirmed mailhog is absent from the production base compose file (dev/local-test/
+tests overlays only).

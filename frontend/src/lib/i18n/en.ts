@@ -121,7 +121,17 @@ export const en = {
 	'jobDetail.failedGeneric': 'The job failed.',
 	'jobDetail.failedHint':
 		'This is usually caused by malformed input or a genome build mismatch. You can start a new analysis from the dashboard.',
-	'jobDetail.download': 'Download all output files (.zip)',
+	'jobDetail.download': 'Download all output files (encrypted .zip)',
+	'jobDetail.downloading': 'Preparing download…',
+	'jobDetail.downloadError': 'The download failed. Please try again.',
+	'jobDetail.zipPasswordIntro':
+		'Your results are delivered as a password-protected zip (AES-256). Choose a password now — it is not stored, so it cannot be recovered or reset.',
+	'jobDetail.zipPassword': 'Zip password (at least 8 characters)',
+	'jobDetail.zipPasswordConfirm': 'Confirm password',
+	'jobDetail.zipPasswordTooShort': 'The password must be at least 8 characters.',
+	'jobDetail.zipPasswordMismatch': 'The two passwords do not match.',
+	'jobDetail.zipOpenHint':
+		'Open it with 7-Zip, The Unarchiver, or `7z x` — Windows Explorer’s built-in zip support cannot open AES-encrypted archives.',
 	'jobDetail.lowOverlapPrefix': 'Low SNP overlap',
 	'jobDetail.lowOverlapBody':
 		"Diet Network's authors recommend discarding predictions when overlap with the reference SNP panel is under 1000 SNPs. Treat these results as unreliable — a common cause is a genome build other than GRCh38.",

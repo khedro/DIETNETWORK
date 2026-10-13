@@ -124,7 +124,17 @@ export const fr: Record<TranslationKey, string> = {
 	'jobDetail.failedGeneric': 'La tâche a échoué.',
 	'jobDetail.failedHint':
 		'Cela est généralement dû à des données mal formées ou à une version du génome incompatible. Vous pouvez démarrer une nouvelle analyse depuis le tableau de bord.',
-	'jobDetail.download': 'Télécharger tous les fichiers de résultats (.zip)',
+	'jobDetail.download': 'Télécharger tous les fichiers de résultats (.zip chiffré)',
+	'jobDetail.downloading': 'Préparation du téléchargement…',
+	'jobDetail.downloadError': 'Le téléchargement a échoué. Veuillez réessayer.',
+	'jobDetail.zipPasswordIntro':
+		'Vos résultats sont fournis dans un fichier zip protégé par mot de passe (AES-256). Choisissez un mot de passe maintenant — il n’est pas conservé et ne peut donc pas être récupéré ni réinitialisé.',
+	'jobDetail.zipPassword': 'Mot de passe du zip (au moins 8 caractères)',
+	'jobDetail.zipPasswordConfirm': 'Confirmer le mot de passe',
+	'jobDetail.zipPasswordTooShort': 'Le mot de passe doit contenir au moins 8 caractères.',
+	'jobDetail.zipPasswordMismatch': 'Les deux mots de passe ne correspondent pas.',
+	'jobDetail.zipOpenHint':
+		'Ouvrez-le avec 7-Zip, The Unarchiver ou `7z x` — la prise en charge zip intégrée de l’Explorateur Windows ne peut pas ouvrir les archives chiffrées en AES.',
 	'jobDetail.lowOverlapPrefix': 'Faible chevauchement SNP',
 	'jobDetail.lowOverlapBody':
 		'Les auteurs de Diet Network recommandent d’écarter les prédictions lorsque le chevauchement avec le panel de référence des SNP est inférieur à 1000 SNP. Considérez ces résultats comme non fiables — une cause fréquente est une version du génome autre que GRCh38.',
