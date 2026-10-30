@@ -1,13 +1,13 @@
 ---
-title: Repository docs (README, DEPLOYMENT, deployPlan)
+title: Repository docs (README, DEPLOYMENT, deployPlan, TESTING, DATABASE)
 type: source
 sources: [code]
-updated: 2026-09-28
+updated: 2026-10-30
 ---
 
 # Repository docs
 
-Three prose documents in the repo. Useful context, but code and paper win when
+Five prose documents in the repo. Useful context, but code and paper win when
 they disagree; see [paper vs code](../analysis/paper-vs-code.md).
 
 ## [README.md](../../README.md)
@@ -36,6 +36,23 @@ Operator guide for what was built: the layout (`backend/`, `worker/`, `frontend/
 `infra/`, `ops/`), the three compose modes (dev, local-test/ICM, Arbutus),
 the Pulumi config/secrets table, concurrency caps, and open items for the PI.
 See [web platform](../code/web-platform.md) and [deployment](../code/deployment.md).
+
+## [TESTING.md](../../TESTING.md)
+Test plan for the pre-flight checks and the queue: manual steps (positive control,
+fixtures 2a–2d, FCFS queue, download cap), then the automated `tests/` suite that
+runs them all against an isolated stack ([testing](../code/testing.md)). Ingested
+2026-10-30. **Two stale parts:** its "Results" table is from the 2026-09-18 run (6 unit
+tests then, 23 now; checks added since are missing), and "Out of scope here" still says
+result encryption is not implemented, though the AES zip landed in `6e1600d`. See
+[paper vs code](../analysis/paper-vs-code.md#docs-vs-code).
+
+## [DATABASE.md](../../DATABASE.md)
+How `backend/app/models.py` (async), `worker/worker/db.py` (a hand-kept sync mirror)
+and Alembic migrations relate, plus the full schema. Ingested 2026-10-30. Key points:
+`alembic upgrade head` runs on every backend boot; the worker's mirror must be
+updated by hand when `users` or `jobs` change (two past incidents came from drift);
+the `jobs` table now documents `sample_count` and points at
+[usage statistics](../code/usage-statistics.md).
 
 ## See also
 - [Publication](publication.md)

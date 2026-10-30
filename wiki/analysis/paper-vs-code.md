@@ -2,7 +2,7 @@
 title: Paper vs code — agreements, gaps, contradictions
 type: analysis
 sources: [paper, code]
-updated: 2026-09-28
+updated: 2026-10-30
 ---
 
 # Paper vs code
@@ -64,7 +64,7 @@ be listed exhaustively. Files were read by known paths. Re-check these with a li
 - `train.py` header comment lists `learning_rate`; the model reads `lr_aux` and `lr_main`.
 - `mainloop_utils.py` Theano helpers reference classes that no longer exist and use
   `n_targets=26`. Dead code.
-- **Caddy ports:** [docker-compose.yml:140-142](../../docker-compose.yml#L140-L142) hard-codes
+- **Caddy ports:** [docker-compose.yml:142-144](../../docker-compose.yml#L142-L144) hard-codes
   `8080:80`/`8443:443` in the base file. DEPLOYMENT.md says the base file is used
   unchanged on Arbutus and that only the local-test setup uses 8080/8443. **Intentional
   for now** (2026-09-28): the owner is testing on a local server. **Before a real Arbutus
@@ -74,6 +74,13 @@ be listed exhaustively. Files were read by known paths. Re-check these with a li
   size. `tasks.py` has sample count, overlap and harmonization; upload size is enforced
   elsewhere (backend `MAX_UPLOAD_MB`).
 - `ENSEMBLE_WORKERS` is configured, but `infer.sh` runs the 15 models sequentially.
+- TESTING.md's "Results" table is from the 2026-09-18 run; the suite now has 14
+  checks and 23 worker unit tests. Latest runs: [Testing](../code/testing.md#latest-results).
+- TESTING.md "Out of scope here" says result encryption is not implemented. It is:
+  AES-256 zip via `POST /jobs/{id}/download` since `6e1600d`
+  ([web platform](../code/web-platform.md#components)).
+- Cloud-init does not override the Caddy ports (checked 2026-10-30), so the 80/443
+  switch above is still needed before Arbutus.
 
 ## Theory → platform decisions
 
@@ -82,8 +89,11 @@ The platform turns several paper findings into rules:
 - Heavy missingness drifts toward the PUR default ([F_ST](../concepts/fst.md)) → the
   overlap floor matters scientifically, not just technically.
 - `--real-ref-alleles` with no automatic allele flipping → allele-harmonization rejection.
-- No calibrated uncertainty (p.1473) → stored predictions keep all 15 votes plus the
-  `all_models` tally, not one label. How the frontend displays them is unverified.
+- No calibrated uncertainty (p.1473) → the results table keeps the vote count for
+  every continent and population, and gives a consensus label only when ≥ 12 of 15
+  models agree (`NA` otherwise). The per-model labels stay in the predictions file in
+  the zip. The frontend does not display predictions at all (checked 2026-10-30): the
+  job page shows overlap and the download only.
 
 ## See also
 - [Publication](../sources/publication.md)

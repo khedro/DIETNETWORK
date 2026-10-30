@@ -8,7 +8,7 @@ workflows: [CLAUDE.md](CLAUDE.md). History: [log.md](log.md).
 
 ## Sources
 - [Publication](sources/publication.md) — AJHG 2026 paper summary: claims in order, key numbers (theory of record, immutable)
-- [Repo docs](sources/repo-docs.md) — README, deployPlan.md, DEPLOYMENT.md and their known errors
+- [Repo docs](sources/repo-docs.md) — README, deployPlan.md, DEPLOYMENT.md, TESTING.md, DATABASE.md and their known errors
 
 ## Concepts
 - [Diet Network architecture](concepts/diet-network-architecture.md) — aux net generates fat-layer weights; exact layer shapes
@@ -30,10 +30,12 @@ workflows: [CLAUDE.md](CLAUDE.md). History: [log.md](log.md).
 ## Code
 - [Inference pipeline](code/inference-pipeline.md) — `infer.sh` stages, real argument order, gotchas
 - [Training pipeline](code/training-pipeline.md) — create → partition → stats → embedding → train.py
-- [Worker pipeline](code/worker-pipeline.md) — upload → PLINK → 4 guardrails → infer.sh → parse; retention
-- [Web platform](code/web-platform.md) — FastAPI/SvelteKit/Celery topology, governance
-- [Deployment](code/deployment.md) — dev, local-test (ICM), Arbutus via Pulumi
+- [Worker pipeline](code/worker-pipeline.md) — upload → PLINK → ID relabel → guardrails → infer.sh → results table (12/15 consensus) + job log; retention
+- [Web platform](code/web-platform.md) — 7-container topology and protocols, encrypted downloads, governance
+- [Deployment](code/deployment.md) — dev, local-test (ICM), Arbutus via Pulumi; data on disk, migrations, no backup yet
+- [Testing](code/testing.md) — unit tests + isolated end-to-end suite, latest results, known fcfs-queue test bug
+- [Usage statistics](code/usage-statistics.md) — `ops/usage_stats.sql` for grant reporting; `jobs.sample_count`; limits
 
 ## Analysis
 - [Paper vs code](analysis/paper-vs-code.md) — matches, gaps, doc errors, open questions
-- [Spec status](analysis/spec-status.md) — specifications.docx item by item: done / partial / not done, suggested order
+- [Spec status](analysis/spec-status.md) — specifications.docx item by item (rechecked 2026-10-30): done / partial / not done, suggested order

@@ -2,7 +2,7 @@
 title: Deployment modes
 type: code
 sources: [code]
-updated: 2026-09-28
+updated: 2026-10-30
 ---
 
 # Deployment modes
@@ -25,6 +25,30 @@ writes `.env` from Pulumi config, and runs `docker compose up -d --build`. Follo
 progress in `/var/log/dietnet-bootstrap.log`. Secrets are set only with
 `pulumi config set --secret`.
 
+## Data on disk and schema migrations
+
+- Postgres data and the `/data` uploads folder are bind-mounted from
+  `${DATA_HOST_PATH}` ([docker-compose.yml:64](../../docker-compose.yml#L64)):
+  `/mnt/data/{postgres,uploads}` on Arbutus (cloud-init sets `DATA_HOST_PATH=/mnt/data`,
+  [user_data.sh.tmpl:101](../../infra/cloud-init/user_data.sh.tmpl#L101)), `./volumes/`
+  locally, `tests/.volumes-test/` for the test suite.
+- The backend's entrypoint runs `alembic upgrade head` before the app starts
+  ([docker-entrypoint.sh](../../backend/docker-entrypoint.sh)), so a deploy or restart
+  applies new migrations by itself. Current head: `5c1d2e7a9b40` (adds
+  `jobs.sample_count`, see [usage statistics](usage-statistics.md)).
+- **No backup is set up.** Nothing in the repo runs `pg_dump` or snapshots the Cinder
+  volume. Losing the volume loses every account, job row and usage statistic. A
+  scheduled `pg_dump` or Cinder snapshot, kept on Canadian infrastructure
+  ([deployPlan.md](../../deployPlan.md)), is an open item.
+
+## Deployed state (checked 2026-10-30)
+
+- **Local ICM stack** (`dietnetwork` project, 8080/8443 + MailHog): images built
+  2026-10-20, database at `5c1d2e7a9b40`, so it runs `e54b406`.
+- **Arbutus**: cannot have `e54b406` yet. `webPlatform` was one commit ahead of
+  `origin` and cloud-init clones from the repo. Not checked on the VM itself.
+- The test suite runs on its own isolated project; see [Testing](testing.md).
+
 ## Things to verify by hand
 
 - `volumeType` really is an encrypted type. Nothing in the deploy checks it, and the
@@ -44,3 +68,5 @@ No code changes are needed.
 
 ## See also
 - [Web platform](web-platform.md)
+- [Testing](testing.md)
+- [Usage statistics](usage-statistics.md)

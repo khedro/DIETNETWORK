@@ -2,7 +2,7 @@
 title: 15-model ensemble
 type: concept
 sources: [paper, code]
-updated: 2026-09-28
+updated: 2026-10-30
 ---
 
 # 15-model ensemble
@@ -28,6 +28,15 @@ from unrepresented populations.
   maps class indices to labels using a hard-coded, alphabetically ordered list of the
   24 populations, renames columns `model1..model15`, and adds `all_models`, e.g.
   `CEUGBR(12),IBS(3)`.
+
+## On the web platform
+
+The platform keeps all 15 votes rather than one label, in line with the paper. Its
+results table counts the votes per population and per continent, and gives a
+consensus label only when at least `CONSENSUS_THRESHOLD` = 12 of 15 models agree,
+`NA` otherwise ([worker pipeline](../code/worker-pipeline.md), step 8). The 12/15
+cut-off comes from the team spec ([spec status](../analysis/spec-status.md)), not
+from the paper.
 
 ## Class index order
 

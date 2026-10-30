@@ -2,7 +2,7 @@
 title: Overview
 type: overview
 sources: [paper, code]
-updated: 2026-09-28
+updated: 2026-10-30
 ---
 
 # DIETNETWORK — overview
@@ -36,7 +36,7 @@ in a way that generalizes across biobanks and can be explained.
 |---|---|---|
 | Research: train and evaluate | `Dietnet_train_and_evaluate/` | [training pipeline](code/training-pipeline.md) |
 | Released tool: inference | `Dietnet_inference/` + Zenodo files | [inference pipeline](code/inference-pipeline.md) |
-| Service: web platform (branch `webPlatform`) | `backend/ worker/ frontend/ infra/ ops/` | [web platform](code/web-platform.md), [worker](code/worker-pipeline.md), [deployment](code/deployment.md) |
+| Service: web platform (branch `webPlatform`) | `backend/ worker/ frontend/ infra/ ops/` | [web platform](code/web-platform.md), [worker](code/worker-pipeline.md), [deployment](code/deployment.md), [testing](code/testing.md), [usage statistics](code/usage-statistics.md) |
 
 ## What to be careful about
 

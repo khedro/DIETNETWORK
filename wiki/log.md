@@ -116,3 +116,34 @@ cleanup task onto it. The prose right below the diagram and the protocol table a
 said this correctly; only the arrowhead itself was stale from before the 2026-10-20
 beat/postgres fix. Flipped it to `beat -> redis`, relabeled "beat pushes (LPUSH), once
 a day."
+
+## [2026-10-30] lint | whole wiki, against webPlatform @ e54b406
+Mechanical checks (links, anchors, line numbers in range, orphans, index coverage,
+frontmatter, `See also`, `(unverified)`): clean apart from the example links in
+CLAUDE.md's own schema text. Content checks found pages stale since 2026-09-28 /
+10-01, behind commits `6e1600d` (AES-encrypted downloads, one-active-job gate, job
+diagnostics) and `e54b406` (PLINK on the homepage, usage statistics).
+- code/worker-pipeline: removed the "uncommitted working tree" note; added the
+  position-based ID relabel, one-active-job gate, per-sample missing rate, results
+  table with 12/15 consensus, job log, `sample_count`; fixed line anchors; retention
+  now notes rows are kept and that purged `predictions` is JSON `null`, not SQL NULL.
+- code/web-platform: container count corrected to 7 (+ MailHog in dev/test only, not
+  "8 + 9th"); added `/data` bind mount and Redis `EVAL` download counter to the
+  protocol table; components updated (POST download, AES zip, 409 gate, SvelteKit SSR
+  with no server-side data loading, predictions not shown in the UI); linked the
+  "DietNetwork Topology" artifact.
+- code/deployment: data paths, `alembic upgrade head` on boot, migration head
+  `5c1d2e7a9b40`, **no database backup** (open item), deployed state (local ICM stack
+  runs e54b406; Arbutus cannot yet, branch unpushed).
+- analysis/spec-status: rechecked every item; 6 moved to done (chr+pos ID rewrite,
+  per-sample missing rate, log file, results table, 12/15 consensus, encrypted zip);
+  suggested order rewritten.
+- analysis/paper-vs-code: Caddy anchor fixed (L142-L144); TESTING.md results table and
+  "encryption out of scope" recorded as stale docs; "how the frontend displays
+  predictions" resolved (it doesn't).
+- sources/repo-docs: ingested TESTING.md and DATABASE.md.
+- concepts/ensemble: added how the platform uses the 15 votes.
+- New pages: code/testing (suites, latest runs 2026-10-13 and 10-27 = 13/14, the
+  fcfs-queue test bug) and code/usage-statistics. index and overview updated.
+Not changed: the Node 22 frontend/Dockerfile edit is uncommitted, so no page claims
+it yet.
