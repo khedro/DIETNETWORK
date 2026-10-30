@@ -13,6 +13,10 @@ calls `infer.sh`, and stores the parsed predictions. Code:
 [pipeline.py](../../worker/worker/pipeline.py) (each step). As of 2026-09-28 both have
 uncommitted changes, and this page reflects the working tree.
 
+For where this sits in the container topology — `infer.sh` runs as a plain
+`subprocess` child of the `worker` container itself, not a separate service or a
+Celery call — see the full diagram in [Web platform](web-platform.md#topology).
+
 ## `run_inference_job(job_id)` flow
 
 1. Mark the job `running`; send a "job started" email. An email failure here is
