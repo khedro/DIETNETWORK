@@ -46,3 +46,6 @@ infra/Pulumi.*.yaml
 clouds.yaml
 infra/clouds.yaml
 
+
+# Browser simulation: generated uploads, stack data, reports
+tests/e2e/.work/

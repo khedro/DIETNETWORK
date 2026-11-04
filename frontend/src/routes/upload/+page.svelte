@@ -187,7 +187,6 @@
 					type="file"
 					accept=".bim"
 					on:change={(e) => (bimFile = e.currentTarget.files?.[0] ?? null)}
-					required
 				/>
 				{#if bimFile}<p class="muted">{bimFile.name}</p>{/if}
 			</div>
@@ -198,7 +197,6 @@
 					type="file"
 					accept=".fam"
 					on:change={(e) => (famFile = e.currentTarget.files?.[0] ?? null)}
-					required
 				/>
 				{#if famFile}<p class="muted">{famFile.name}</p>{/if}
 				<p class="muted">{$t('upload.plink.hint')}</p>
