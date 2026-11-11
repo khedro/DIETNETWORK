@@ -292,7 +292,10 @@ async function runUser(name, cfg, ctx, shared) {
 		const outcome = await step('wait-for-job', async () => {
 			const form = page.locator('input[type=password]').first();
 			const failed = page.locator('.card .error-banner');
-			const pageError = page.locator('body > * .error-banner');
+			// Only a banner outside the job card means the page itself failed to load.
+			// Checking both selectors one after the other can otherwise race a job
+			// that fails between the two checks.
+			const pageError = page.locator('.error-banner:not(.card .error-banner)');
 			const deadline = Date.now() + JOB_TIMEOUT_MS;
 			while (Date.now() < deadline) {
 				if (await form.count()) return 'done';
