@@ -11,7 +11,7 @@ with --case 2c / --case 2d (see run_all.sh; TESTING.md itself recommends
 this over fabricating an oversized fixture -- "simpler... exercises the
 same code path").
 
-Usage: preflight_checks.py --case {positive,2a,2b,2c,2d} --base-url URL --mailhog-url URL [--json-out PATH]
+Usage: preflight_checks.py --case {positive,2a,2b,2c,2d,2e} --base-url URL --mailhog-url URL [--json-out PATH]
 Exit code 0 = expectation met, 1 = not met (see stdout for the diagnostic).
 """
 from __future__ import annotations
@@ -40,6 +40,8 @@ CASES = {
     "2b": {"fixture": os.path.join(FIXTURES_DIR, "swapped"), "expect_upload_status": 201},
     "2c": {"fixture": POSITIVE_CONTROL, "expect_upload_status": 201},  # rejected once running, not at upload time
     "2d": {"fixture": POSITIVE_CONTROL, "expect_upload_status": 413},  # rejected synchronously, in create_upload
+    # rsID-labeled SNP IDs: must now be relabeled by position and run to completion
+    "2e": {"fixture": os.path.join(FIXTURES_DIR, "rsid_labels"), "expect_upload_status": 201},
 }
 
 
@@ -80,6 +82,22 @@ def run_case(case: str, base_url: str, mailhog_url: str, job_timeout: float) -> 
             # already-"done" job without re-running the full ensemble.
             "access_token": session.cookies.get("access_token"),
             "detail": json.dumps(job),
+        }
+
+    if case == "2e":
+        # Every SNP has an rsID, so the full overlap can only come from
+        # position-based relabeling.
+        ok = (
+            job["status"] == "done"
+            and job.get("is_reliable") is True
+            and job.get("snp_overlap_count") == job.get("snp_overlap_total")
+        )
+        return {
+            "case": case,
+            "passed": ok,
+            "job_id": job["id"],
+            "detail": f"status={job['status']} overlap={job.get('snp_overlap_count')}/{job.get('snp_overlap_total')} "
+            f"error={job.get('error_message')}",
         }
 
     expected_substrings = {

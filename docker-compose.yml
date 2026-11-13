@@ -43,6 +43,8 @@ x-worker-env: &worker-env
   MAX_SAMPLES: ${MAX_SAMPLES:-10000}
   MIN_RELIABLE_SNP_OVERLAP: ${MIN_RELIABLE_SNP_OVERLAP:-1000}
   MAX_ALLELE_MISMATCH_FRACTION: ${MAX_ALLELE_MISMATCH_FRACTION:-0.05}
+  # Models (of 15) that must agree for a consensus label in the results table.
+  CONSENSUS_THRESHOLD: ${CONSENSUS_THRESHOLD:-12}
   # How many inference jobs run in parallel -- the processing side of the
   # concurrency cap (disk/CPU headroom), independent of the download cap
   # above. CPU-only ensemble (deployPlan.md); tune against measured vCPU

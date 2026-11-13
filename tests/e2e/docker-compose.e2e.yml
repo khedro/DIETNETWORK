@@ -1,0 +1,31 @@
+# Isolated overlay for the browser simulation (tests/e2e/run.sh). Runs under
+# its own compose project (dietnet-e2e) with the production topology, including
+# the frontend and Caddy that tests/docker-compose.test.yml leaves out.
+#
+# The base file's `caddy` service hard-codes host ports 8080/8443, and Compose
+# appends list-type keys across -f files, so it can't be remapped here. run.sh
+# never starts it and brings up `edge` instead: same image and Caddyfile, on
+# loopback-only test ports.
+services:
+  mailhog:
+    image: mailhog/mailhog
+    networks: [internal]
+    ports:
+      - "127.0.0.1:18125:8025"
+
+  edge:
+    image: caddy:2-alpine
+    ports:
+      - "127.0.0.1:18443:443"
+    environment:
+      DOMAIN: localhost
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - edge_data:/data
+      - edge_config:/config
+    depends_on: [backend, frontend]
+    networks: [web]
+
+volumes:
+  edge_data:
+  edge_config:

@@ -14,13 +14,13 @@ export const fr: Record<TranslationKey, string> = {
 
 	'home.title': "Inférence d'ascendance génétique, propulsée par Diet Network",
 	'home.subtitle':
-		"Téléversez votre fichier de génotypes VCF ou bgen et obtenez des prédictions d'ascendance grâce à l'ensemble Diet Network pré-entraîné du HussinLab — 15 modèles entraînés sur 1000 Genomes, couvrant 24 populations.",
+		"Téléversez vos fichiers de génotypes VCF, bgen ou PLINK et obtenez des prédictions d'ascendance grâce à l'ensemble Diet Network pré-entraîné du HussinLab — 15 modèles entraînés sur 1000 Genomes, couvrant 24 populations.",
 	'home.cta.start': 'Démarrer une nouvelle analyse',
 	'home.cta.createAccount': 'Créer un compte gratuit',
 	'home.cta.login': 'Se connecter',
 	'home.feature1.title': 'Utilisez vos propres génotypes',
 	'home.feature1.prefix':
-		'Accepte les fichiers .vcf, .vcf.gz et .bgen (avec un fichier .sample). Les génotypes doivent être harmonisés avec',
+		'Accepte les fichiers .vcf, .vcf.gz, .bgen (avec un fichier .sample) et PLINK (.bed/.bim/.fam). Les génotypes doivent être harmonisés avec',
 	'home.feature2.title': "Inférence asynchrone par ensemble de modèles",
 	'home.feature2.body':
 		'Chaque tâche exécute 15 modèles séquentiellement — généralement quelques minutes. Suivez l’état en direct depuis votre tableau de bord et recevez un courriel lorsque les résultats sont prêts.',
@@ -124,7 +124,17 @@ export const fr: Record<TranslationKey, string> = {
 	'jobDetail.failedGeneric': 'La tâche a échoué.',
 	'jobDetail.failedHint':
 		'Cela est généralement dû à des données mal formées ou à une version du génome incompatible. Vous pouvez démarrer une nouvelle analyse depuis le tableau de bord.',
-	'jobDetail.download': 'Télécharger tous les fichiers de résultats (.zip)',
+	'jobDetail.download': 'Télécharger tous les fichiers de résultats (.zip chiffré)',
+	'jobDetail.downloading': 'Préparation du téléchargement…',
+	'jobDetail.downloadError': 'Le téléchargement a échoué. Veuillez réessayer.',
+	'jobDetail.zipPasswordIntro':
+		'Vos résultats sont fournis dans un fichier zip protégé par mot de passe (AES-256). Choisissez un mot de passe maintenant — il n’est pas conservé et ne peut donc pas être récupéré ni réinitialisé.',
+	'jobDetail.zipPassword': 'Mot de passe du zip (au moins 8 caractères)',
+	'jobDetail.zipPasswordConfirm': 'Confirmer le mot de passe',
+	'jobDetail.zipPasswordTooShort': 'Le mot de passe doit contenir au moins 8 caractères.',
+	'jobDetail.zipPasswordMismatch': 'Les deux mots de passe ne correspondent pas.',
+	'jobDetail.zipOpenHint':
+		'Ouvrez-le avec 7-Zip, The Unarchiver ou `7z x` — la prise en charge zip intégrée de l’Explorateur Windows ne peut pas ouvrir les archives chiffrées en AES.',
 	'jobDetail.lowOverlapPrefix': 'Faible chevauchement SNP',
 	'jobDetail.lowOverlapBody':
 		'Les auteurs de Diet Network recommandent d’écarter les prédictions lorsque le chevauchement avec le panel de référence des SNP est inférieur à 1000 SNP. Considérez ces résultats comme non fiables — une cause fréquente est une version du génome autre que GRCh38.',

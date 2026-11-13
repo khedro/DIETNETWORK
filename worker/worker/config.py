@@ -38,6 +38,11 @@ class Settings:
     # are normal; a large fraction indicates the whole file needs re-harmonizing.
     max_allele_mismatch_fraction: float = float(os.environ.get("MAX_ALLELE_MISMATCH_FRACTION", "0.05"))
 
+    # Minimum number of the 15 models that must agree for a sample's continent
+    # / population consensus in the results table; below it the cell is "NA".
+    # 12 (80%) is the value proposed in specifications.docx.
+    consensus_threshold: int = int(os.environ.get("CONSENSUS_THRESHOLD", "12"))
+
     # --- QC ---
     geno_missingness_threshold: str = os.environ.get("GENO_MISSINGNESS_THRESHOLD", "0.1")
 
