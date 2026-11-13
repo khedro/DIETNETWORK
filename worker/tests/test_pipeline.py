@@ -17,7 +17,10 @@ from worker.pipeline import (
     CONTINENT_COLUMNS,
     POPULATION_COLUMNS,
     RESULTS_TABLE_COLUMNS,
+    OPTIONAL_INFER_OUTPUTS,
+    REQUIRED_INFER_OUTPUTS,
     PipelineError,
+    QualityControlError,
     build_results_table,
     check_allele_harmonization,
     check_snp_overlap,
@@ -26,6 +29,7 @@ from worker.pipeline import (
     count_samples,
     detect_id_labeling_mismatch,
     relabel_snp_ids,
+    run_infer,
     write_job_log,
     write_results_table,
 )
@@ -241,6 +245,7 @@ def test_relabel_snp_ids_rewrites_by_position_and_alleles(tmp_path):
         "no_position_match": 1,
         "allele_mismatch": 1,
         "duplicate_skipped": 1,
+        "filled_missing_allele": 1,
     }
     ids = [line.split("\t")[1] for line in (tmp_path / "query.bim").read_text().splitlines()]
     assert ids == [
@@ -253,10 +258,34 @@ def test_relabel_snp_ids_rewrites_by_position_and_alleles(tmp_path):
         "dup100",
         "chr2:700:A:G",
     ]
-    # Everything except the ID column is untouched (row order == .bed order).
-    for original, line in zip(query, (tmp_path / "query.bim").read_text().splitlines()):
+    # Everything except the ID column is untouched (row order == .bed order),
+    # apart from the monomorphic row's '0' allele, filled from the panel.
+    expected = [list(r) for r in query]
+    expected[7][3] = "A"
+    for original, line in zip(expected, (tmp_path / "query.bim").read_text().splitlines()):
         fields = line.split("\t")
         assert (fields[0], fields[3], fields[4], fields[5]) == (original[0], str(original[2]), original[3], original[4])
+
+
+def test_relabel_snp_ids_fills_monomorphic_allele_only_in_panel_order(tmp_path):
+    """infer.sh rebuilds IDs as chr:pos:A2:A1 from the .bim, so a '0' allele
+    must become the panel's -- but only where that yields the panel's order."""
+    panel = tmp_path / "dummy.bim"
+    _write_bim_rows(panel, PANEL_ROWS)
+    _write_bim_rows(
+        tmp_path / "query.bim",
+        [
+            ("1", "chr1:100:A:G", 100, "0", "G"),  # A2 is the panel's A2 -> A1 filled
+            ("1", "chr1:200:C:T", 200, "C", "0"),  # A1 is the panel's A1 -> A2 filled
+            ("2", "chr2:500:A:G", 500, "0", "A"),  # observed allele in the wrong column -> left alone
+        ],
+    )
+
+    counts = relabel_snp_ids(str(tmp_path / "query"), str(panel))
+
+    assert counts["filled_missing_allele"] == 2
+    rows = [line.split("\t") for line in (tmp_path / "query.bim").read_text().splitlines()]
+    assert [(r[4], r[5]) for r in rows] == [("A", "G"), ("C", "T"), ("0", "A")]
 
 
 def test_relabel_snp_ids_is_idempotent(tmp_path):
@@ -292,13 +321,14 @@ def test_count_position_overlap_ignores_ids(tmp_path):
 
 
 def _write_predictions(path, samples):
-    """samples: list of (sample_id, [15 labels])."""
-    header = ["samples"] + [f"model{i}" for i in range(1, 16)] + ["all_models"]
+    """samples: list of (sample_id, [15 labels]), in the layout of infer.sh's
+    <prefix>_predictions_bymodel_population.txt."""
+    header = ["Samples", "F_MISS"] + [f"model{i}" for i in range(1, 16)]
     with open(path, "w") as f:
         f.write("\t".join(header) + "\n")
         for sample, votes in samples:
             assert len(votes) == 15
-            f.write("\t".join([sample] + votes + ["ignored"]) + "\n")
+            f.write("\t".join([sample, "0.5"] + votes) + "\n")
 
 
 def test_build_results_table_consensus_and_counts(tmp_path):
@@ -350,14 +380,14 @@ def test_build_results_table_rejects_unknown_label(tmp_path):
 
 def test_population_columns_match_model_labels():
     """The table's 24 population columns must be exactly the labels
-    Dietnet_inference/inference_combine_results.py can emit."""
+    Dietnet_inference/population_config.py lists as model outputs."""
     import re
 
-    script = os.path.join(settings.dietnet_code_path, "inference_combine_results.py")
+    script = os.path.join(settings.dietnet_code_path, "population_config.py")
     if not os.path.isfile(script):  # host run: fall back to the repo copy
-        script = os.path.join(os.path.dirname(__file__), "..", "..", "Dietnet_inference", "inference_combine_results.py")
+        script = os.path.join(os.path.dirname(__file__), "..", "..", "Dietnet_inference", "population_config.py")
     if not os.path.isfile(script):
-        pytest.skip("inference_combine_results.py not available")
+        pytest.skip("population_config.py not available")
     block = re.search(r"dn_label_order = \[(.*?)\]", open(script).read(), re.S).group(1)
     model_labels = set(re.findall(r"'([A-Z]+)'", block))
 
@@ -403,6 +433,9 @@ def test_write_job_log_contains_spec_fields(tmp_path):
         "continent_consensus_count": 3,
         "population_consensus_count": 2,
         "is_reliable": False,
+        "qc_population_accuracy": 0.9694,
+        "qc_continent_accuracy": 0.99798,
+        "missing_optional_outputs": ["result_representation_pop.png"],
         "infer_stdout": "The SNP overlap with Diet Network is: 910 out of 229986\n",
     }
     path = tmp_path / "log.txt"
@@ -421,6 +454,9 @@ def test_write_job_log_contains_spec_fields(tmp_path):
         "Population consensus reached: 2 of 3 samples",
         "Reliable (overlap >= 1000): NO",
         "The SNP overlap with Diet Network is: 910 out of 229986",
+        "Mean continent-level accuracy:  99.80% (minimum 95%)",
+        "Mean population-level accuracy: 96.94%",
+        "Not produced (see infer.sh output): result_representation_pop.png",
     ]:
         assert expected in text, expected
 
@@ -497,3 +533,94 @@ def test_relabel_snp_ids_restores_full_overlap_for_rsid_fixture(tmp_path):
     assert counts["total"] == 229986
     assert counts["relabeled"] == 229986
     assert counts["already_matching"] == 0
+
+
+# --- run_infer -- a fake infer.sh stands in for Dietnet_inference/infer.sh ---
+
+FAKE_QC_OK = """Population-level accuracy by model:
+Average population-level accuracy across all models: 0.9694242712040742
+Average continent-level accuracy across all models: 0.9979840662814166
+"""
+FAKE_QC_FAIL = """Average continent-level accuracy across all models: 0.9411681766467678
+Stopping pipeline: Mean continent-level accuracy is below 95% (94.12%)
+Exit.
+"""
+
+
+def _fake_infer(tmp_path, monkeypatch, body):
+    """Points settings.dietnet_code_path at a directory whose infer.sh runs
+    `body` (with $5 = output name, cwd = results dir) and records its args."""
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "infer.sh").write_text('echo "$@" > args.txt\n' + body)
+    monkeypatch.setattr(settings, "dietnet_code_path", str(code))
+    results = tmp_path / "results"
+    results.mkdir()
+    return str(results / "result")
+
+
+def _touch_outputs(suffixes):
+    return "".join(f'touch "$5{s}"\n' for s in suffixes)
+
+
+def test_run_infer_passes_folds_and_reps_and_returns_outputs(tmp_path, monkeypatch):
+    prefix = _fake_infer(
+        tmp_path,
+        monkeypatch,
+        f"cat <<'EOF'\n{FAKE_QC_OK}EOF\n"
+        + _touch_outputs(REQUIRED_INFER_OUTPUTS + OPTIONAL_INFER_OUTPUTS)
+        + "mkdir -p 1KGP_RESULTS && touch 1KGP_RESULTS/x.npz $5.hdf5\n",
+    )
+
+    result = run_infer("/converted/query", prefix)
+
+    args = open(os.path.join(os.path.dirname(prefix), "args.txt")).read().split()
+    assert args[3:] == ["/converted/query", "result", "5", "3"]
+    assert result.by_model_file == prefix + "_predictions_bymodel_population.txt"
+    assert result.qc_continent_accuracy == pytest.approx(0.99798, abs=1e-5)
+    assert result.qc_population_accuracy == pytest.approx(0.96942, abs=1e-5)
+    assert result.missing_optional_outputs == []
+    # scratch left by infer.sh is removed; real outputs are kept
+    assert not os.path.exists(os.path.join(os.path.dirname(prefix), "1KGP_RESULTS"))
+    assert not os.path.exists(prefix + ".hdf5")
+    assert os.path.isfile(prefix + "_predictions.txt")
+
+
+def test_run_infer_qc_stop_is_a_user_facing_error_and_cleans_up(tmp_path, monkeypatch):
+    prefix = _fake_infer(
+        tmp_path,
+        monkeypatch,
+        f"cat <<'EOF'\n{FAKE_QC_FAIL}EOF\n"
+        + 'touch "$5_included_snps.txt"; mkdir -p 1KGP_RESULTS; touch 1KGP_RESULTS/big.npz\nexit 1\n',
+    )
+
+    with pytest.raises(QualityControlError) as exc:
+        run_infer("/converted/query", prefix)
+
+    assert "94.12% continent-level accuracy" in str(exc.value)
+    assert "below the 95% required" in str(exc.value)
+    assert not os.path.exists(os.path.join(os.path.dirname(prefix), "1KGP_RESULTS"))
+
+
+def test_run_infer_other_failure_is_generic(tmp_path, monkeypatch):
+    prefix = _fake_infer(tmp_path, monkeypatch, "echo boom; exit 3\n")
+    with pytest.raises(PipelineError) as exc:
+        run_infer("/converted/query", prefix)
+    assert not isinstance(exc.value, QualityControlError)
+
+
+def test_run_infer_exit_0_without_predictions_fails(tmp_path, monkeypatch):
+    """infer.sh doesn't check its python steps' exit codes."""
+    prefix = _fake_infer(tmp_path, monkeypatch, f"cat <<'EOF'\n{FAKE_QC_OK}EOF\n" + _touch_outputs(OPTIONAL_INFER_OUTPUTS))
+    with pytest.raises(PipelineError, match="without producing a predictions file"):
+        run_infer("/converted/query", prefix)
+
+
+def test_run_infer_missing_plots_are_reported_not_fatal(tmp_path, monkeypatch):
+    prefix = _fake_infer(
+        tmp_path,
+        monkeypatch,
+        f"cat <<'EOF'\n{FAKE_QC_OK}EOF\n" + _touch_outputs(REQUIRED_INFER_OUTPUTS + OPTIONAL_INFER_OUTPUTS[:3]),
+    )
+    result = run_infer("/converted/query", prefix)
+    assert result.missing_optional_outputs == ["result_representation_pop.png", "result_representation_continent.png"]

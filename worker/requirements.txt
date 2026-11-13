@@ -4,3 +4,6 @@ celery==5.4.0
 redis==5.0.8
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
+# Dietnet_inference/hidden_layer_pca.py (infer.sh's PCA plots) imports sklearn,
+# which the inference requirements file doesn't list.
+scikit-learn==1.7.2

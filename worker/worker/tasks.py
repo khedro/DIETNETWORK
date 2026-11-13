@@ -174,10 +174,10 @@ def run_inference_job(self, job_id: str) -> None:
         )
 
         output_prefix = os.path.join(results_dir, "result")
-        predictions_file, infer_stdout = run_infer(plink_prefix, output_prefix)
+        infer = run_infer(plink_prefix, output_prefix)
 
         is_reliable = overlap_count >= settings.min_reliable_snp_overlap
-        table_rows = build_results_table(predictions_file, missing_rates, settings.consensus_threshold)
+        table_rows = build_results_table(infer.by_model_file, missing_rates, settings.consensus_threshold)
         write_results_table(f"{output_prefix}_results_table.tsv", table_rows)
         write_job_log(
             f"{output_prefix}_job_log.txt",
@@ -196,12 +196,15 @@ def run_inference_job(self, job_id: str) -> None:
                 "continent_consensus_count": sum(r["Continent consensus"] != "NA" for r in table_rows),
                 "population_consensus_count": sum(r["Population consensus"] != "NA" for r in table_rows),
                 "is_reliable": is_reliable,
-                "infer_stdout": infer_stdout,
+                "qc_population_accuracy": infer.qc_population_accuracy,
+                "qc_continent_accuracy": infer.qc_continent_accuracy,
+                "missing_optional_outputs": infer.missing_optional_outputs,
+                "infer_stdout": infer.stdout,
             },
         )
 
         job.status = "done"
-        job.results_path = predictions_file
+        job.results_path = infer.by_model_file
         job.snp_overlap_count = overlap_count
         job.snp_overlap_total = overlap_total
         job.is_reliable = is_reliable

@@ -5,9 +5,13 @@ to the network at request time (models/SNP files are baked into the image
 at build time -- see ops/scripts/fetch_zenodo_models.sh).
 """
 import csv
+import glob
 import logging
 import os
+import re
+import shutil
 import subprocess
+from dataclasses import dataclass, field
 
 from worker.config import settings
 
@@ -306,6 +310,20 @@ def _alleles_compatible(query: tuple[str, str], reference: tuple[str, str]) -> b
     return known <= ref_set or known <= comp_set
 
 
+def _fill_missing_allele(row: list[str], panel: tuple[str, str]) -> bool:
+    """Replaces a single '0' allele code in .bim row (A1 = col 5, A2 = col 6)
+    with the panel's allele at that column, if the observed allele is the
+    panel's allele at the other column. Returns True if the row changed."""
+    a1, a2 = row[4].upper(), row[5].upper()
+    if a1 == "0" and a2 == panel[1] and a2 != "0":
+        row[4] = panel[0]
+        return True
+    if a2 == "0" and a1 == panel[0] and a1 != "0":
+        row[5] = panel[1]
+        return True
+    return False
+
+
 def relabel_snp_ids(plink_prefix: str, dummy_bim_path: str) -> dict[str, int]:
     """Rewrites the SNP ID column (2) of <plink_prefix>.bim to the panel's
     'chr<chrom>:<pos>:<ref>:<alt>' IDs, matching on chromosome + position
@@ -318,17 +336,25 @@ def relabel_snp_ids(plink_prefix: str, dummy_bim_path: str) -> dict[str, int]:
     order, so IDs can change without touching the genotypes. Only ever
     called on the platform's own converted copy, never the user's upload.
 
+    Also fills a monomorphic SNP's missing ('0') allele code with the
+    panel's: infer.sh rebuilds every ID from the .bim allele columns
+    (chr:pos:A2:A1), so "chr1:100:A:0" would no longer match the panel and
+    the SNP would drop out of the overlap. Only done when the result is the
+    panel's exact A1/A2 order; genotypes are unaffected because no sample
+    carries the filled-in allele.
+
     Returns counts: total, already_matching, relabeled, no_position_match,
     allele_mismatch (position in the panel, alleles not compatible),
-    duplicate_skipped (would duplicate an ID already present)."""
+    duplicate_skipped (would duplicate an ID already present),
+    filled_missing_allele (monomorphic SNPs given the panel's other allele)."""
     by_position: dict[str, list[tuple[str, str, str]]] = {}
-    panel_ids: set[str] = set()
+    panel_alleles: dict[str, tuple[str, str]] = {}
     with open(dummy_bim_path) as f:
         for line in f:
             fields = line.split()
             if len(fields) < 6:
                 continue
-            panel_ids.add(fields[1])
+            panel_alleles[fields[1]] = (fields[4].upper(), fields[5].upper())
             key = f"{_normalize_chrom(fields[0])}:{fields[3]}"
             by_position.setdefault(key, []).append((fields[1], fields[4].upper(), fields[5].upper()))
 
@@ -343,17 +369,20 @@ def relabel_snp_ids(plink_prefix: str, dummy_bim_path: str) -> dict[str, int]:
         "no_position_match": 0,
         "allele_mismatch": 0,
         "duplicate_skipped": 0,
+        "filled_missing_allele": 0,
     }
 
     # IDs already right are reserved first, so a relabel can never collide
     # with a row that was correct to begin with.
-    used_ids = {row[1] for row in rows if len(row) >= 6 and row[1] in panel_ids}
+    used_ids = {row[1] for row in rows if len(row) >= 6 and row[1] in panel_alleles}
 
     for row in rows:
         if len(row) < 6:
             continue
-        if row[1] in panel_ids:
+        if row[1] in panel_alleles:
             counts["already_matching"] += 1
+            if _fill_missing_allele(row, panel_alleles[row[1]]):
+                counts["filled_missing_allele"] += 1
             continue
         candidates = by_position.get(f"{_normalize_chrom(row[0])}:{row[3]}")
         if not candidates:
@@ -371,6 +400,8 @@ def relabel_snp_ids(plink_prefix: str, dummy_bim_path: str) -> dict[str, int]:
         row[1] = new_id
         used_ids.add(new_id)
         counts["relabeled"] += 1
+        if _fill_missing_allele(row, panel_alleles[new_id]):
+            counts["filled_missing_allele"] += 1
 
     tmp_path = bim_path + ".relabel.tmp"
     with open(tmp_path, "w") as f:
@@ -402,45 +433,130 @@ def compute_sample_missing_rates(plink_prefix: str, out_prefix: str) -> dict[str
     return rates
 
 
-def run_infer(plink_prefix: str, output_prefix: str) -> tuple[str, str]:
-    """Runs Dietnet_inference/infer.sh with the REAL argument order (the
-    README's order is wrong -- verified against the script itself):
+NB_FOLDS = 5
+NB_REPS = 3
 
-        bash infer.sh <plink_path> <dietnet_code_path> <dietnet_files_path> <plink_test_prefix> <output_name>
+# Files infer.sh leaves in the results directory on success (all shipped in
+# the results zip). The per-model population table is what the results
+# table is built from, so it -- and the summary -- are required; the rest
+# are reported in the job log when missing rather than failing the job.
+REQUIRED_INFER_OUTPUTS = ("_predictions_bymodel_population.txt", "_predictions.txt")
+OPTIONAL_INFER_OUTPUTS = (
+    "_predictions_bymodel_continent.txt",
+    "_barplot_population.png",
+    "_barplot_continent.png",
+    "_representation_pop.png",
+    "_representation_continent.png",
+)
 
-    <output_name> must be a bare relative prefix (not an absolute path):
-    infer.sh does `output_dir=${output_name}_DIETNET_RESULTS_BY_MODEL` and
-    then writes per-fold results to `${output_dir}/${output_name}_model...`,
-    i.e. it concatenates output_name into itself a second time. Passing an
-    absolute output_name there produces a broken doubled-absolute path (e.g.
-    "/a/b_DIETNET_RESULTS_BY_MODEL//a/b_model5_1_infered.npz"), so every
-    fold/rep silently fails to save its .npz and the final combine step has
-    nothing to read -- infer.sh doesn't check those exit codes, so it still
-    prints "completed" and exits 0. We run with cwd set to output_prefix's
-    directory (below) so a relative name still lands in the right place.
+# compute_1kgp_accuracy.py's messages (Dietnet_inference/, not edited here).
+_QC_STOP_RE = re.compile(r"Stopping pipeline: Mean continent-level accuracy is below ([\d.]+)% \(([\d.]+)%\)")
+_QC_POP_ACC_RE = re.compile(r"Average population-level accuracy across all models: ([\d.eE+-]+)")
+_QC_CONTINENT_ACC_RE = re.compile(r"Average continent-level accuracy across all models: ([\d.eE+-]+)")
 
-    Returns (predictions_file, infer.sh stdout).
-    """
+
+class QualityControlError(PipelineError):
+    """infer.sh's 1KGP quality-control step stopped the job."""
+
+
+@dataclass
+class InferResult:
+    by_model_file: str
+    stdout: str
+    qc_population_accuracy: float | None
+    qc_continent_accuracy: float | None
+    missing_optional_outputs: list[str] = field(default_factory=list)
+
+
+def _remove_infer_intermediates(output_dir: str, output_name: str) -> None:
+    """infer.sh only cleans up after itself on success; after a QC stop or a
+    crash it leaves the per-model .npz folders (~0.5 GB for 1KGP) and the
+    hdf5 in the results directory. Safe to call after success too."""
+    for d in ("1KGP_RESULTS", f"{output_name}_RESULTS"):
+        shutil.rmtree(os.path.join(output_dir, d), ignore_errors=True)
+    for pattern in (
+        f"{output_name}.*",
+        f"{output_name}_missingfilled.*",
+        f"{output_name}_missingnesspersample.*",
+        "sample_order.txt",
+    ):
+        for path in glob.glob(os.path.join(output_dir, pattern)):
+            if os.path.isfile(path):
+                os.remove(path)
+
+
+def run_infer(plink_prefix: str, output_prefix: str) -> InferResult:
+    """Runs Dietnet_inference/infer.sh:
+
+        bash infer.sh <plink_path> <dietnet_code_path> <dietnet_files_path> \\
+                      <plink_user_files_prefix> <output_name> <nb_folds> <nb_reps>
+
+    infer.sh first checks the SNP overlap on 1KGP (mean continent accuracy
+    of the 15 models restricted to the overlapping SNPs must be >= 95%) and
+    exits 1 if it isn't; that becomes a QualityControlError with a message
+    for the user. Note infer.sh rewrites <plink_prefix>.bim in place (the
+    original is kept as <plink_prefix>_original.bim) -- only ever called on
+    the platform's converted copy, never the upload.
+
+    <output_name> is passed as a bare relative prefix with cwd set to the
+    results directory: infer.sh writes its 1KGP_RESULTS/ and
+    <output_name>_RESULTS/ scratch folders and all outputs relative to cwd.
+
+    infer.sh doesn't check the exit status of its python steps, so exit 0
+    doesn't mean every output exists; they are checked here."""
     infer_script = os.path.join(settings.dietnet_code_path, "infer.sh")
     output_dir = os.path.dirname(output_prefix)
     output_name = os.path.basename(output_prefix)
     os.makedirs(output_dir, exist_ok=True)
-    stdout = _run(
-        [
-            "bash",
-            infer_script,
-            settings.plink_path,
-            settings.dietnet_code_path,
-            settings.dietnet_files_path,
-            plink_prefix,
-            output_name,
-        ],
-        cwd=output_dir,
-    )
-    predictions_file = f"{output_prefix}_dietnet_predictions.txt"
-    if not os.path.isfile(predictions_file):
+    cmd = [
+        "bash",
+        infer_script,
+        settings.plink_path,
+        settings.dietnet_code_path,
+        settings.dietnet_files_path,
+        plink_prefix,
+        output_name,
+        str(NB_FOLDS),
+        str(NB_REPS),
+    ]
+    logger.info("Running: %s", " ".join(cmd))
+    try:
+        proc = subprocess.run(cmd, cwd=output_dir, capture_output=True, text=True)
+    finally:
+        _remove_infer_intermediates(output_dir, output_name)
+    if proc.stderr.strip():
+        logger.warning("infer.sh stderr (exit %s): %s", proc.returncode, proc.stderr[-4000:])
+
+    if proc.returncode != 0:
+        qc = _QC_STOP_RE.search(proc.stdout)
+        if qc:
+            raise QualityControlError(
+                "Quality control failed: using only the SNPs your data shares with the Diet Network "
+                f"panel, the models reach {qc.group(2)}% continent-level accuracy on the 1000 Genomes "
+                f"reference samples, below the {qc.group(1)}% required, so predictions on your data "
+                "would not be reliable. Increasing SNP coverage (for example by imputing your data) "
+                "usually fixes this."
+            )
+        logger.error("infer.sh failed (exit %s): stdout=%s", proc.returncode, proc.stdout[-4000:])
+        raise PipelineError("Step 'infer.sh' failed. See worker logs for job diagnostics.")
+
+    missing = [s for s in REQUIRED_INFER_OUTPUTS if not os.path.isfile(output_prefix + s)]
+    if missing:
+        logger.error("infer.sh exited 0 without %s; stdout=%s", missing, proc.stdout[-4000:])
         raise PipelineError("Inference completed without producing a predictions file.")
-    return predictions_file, stdout
+    missing_optional = [s for s in OPTIONAL_INFER_OUTPUTS if not os.path.isfile(output_prefix + s)]
+    if missing_optional:
+        logger.warning("infer.sh did not produce %s", missing_optional)
+
+    pop_acc = _QC_POP_ACC_RE.search(proc.stdout)
+    continent_acc = _QC_CONTINENT_ACC_RE.search(proc.stdout)
+    return InferResult(
+        by_model_file=output_prefix + REQUIRED_INFER_OUTPUTS[0],
+        stdout=proc.stdout,
+        qc_population_accuracy=float(pop_acc.group(1)) if pop_acc else None,
+        qc_continent_accuracy=float(continent_acc.group(1)) if continent_acc else None,
+        missing_optional_outputs=[output_name + s for s in missing_optional],
+    )
 
 
 # --- Results table (specifications.docx, "Tableau prédictions") ---
@@ -476,8 +592,8 @@ def _consensus(counts: dict[str, int], threshold: int) -> str:
 def build_results_table(
     predictions_file: str, missing_rates: dict[str, float], consensus_threshold: int
 ) -> list[dict]:
-    """One row per sample from infer.sh's <prefix>_dietnet_predictions.txt
-    (columns: samples, model1..model15, all_models): missing rate, continent
+    """One row per sample from infer.sh's <prefix>_predictions_bymodel_population.txt
+    (columns: Samples, F_MISS, model1..model15): missing rate, continent
     and population consensus, and how many of the 15 models voted for each
     continent and each population. A sample with no missing-rate entry gets
     "NA" there rather than failing the job."""
@@ -491,7 +607,7 @@ def build_results_table(
             pop_counts = {pop: votes.count(pop) for pop in POPULATION_COLUMNS}
             continent_counts = {c: sum(pop_counts[p] for p in POPULATIONS_BY_CONTINENT[c]) for c in CONTINENT_COLUMNS}
 
-            sample = record["samples"]
+            sample = record["Samples"]
             rate = missing_rates.get(sample)
             row = {
                 "Sample": sample,
@@ -513,6 +629,10 @@ def write_results_table(path: str, rows: list[dict]) -> None:
 
 
 # --- Job log (specifications.docx, "Log file") ---
+
+
+def _pct(value: float | None) -> str:
+    return f"{100 * value:.2f}%" if value is not None else "Not available"
 
 
 def write_job_log(path: str, info: dict) -> None:
@@ -546,6 +666,7 @@ def write_job_log(path: str, info: dict) -> None:
         f"Position not in panel:   {r['no_position_match']}",
         f"Allele mismatch at a panel position (not relabeled): {r['allele_mismatch']}",
         f"Would duplicate an ID (not relabeled): {r['duplicate_skipped']}",
+        f"Monomorphic, missing allele filled from panel: {r.get('filled_missing_allele', 0)}",
         "",
         "Allele harmonization (overlapping SNPs vs panel)",
         "------------------------------------------------",
@@ -568,6 +689,11 @@ def write_job_log(path: str, info: dict) -> None:
         lines.append("Not available")
     lines += [
         "",
+        "Quality control on 1000 Genomes (overlapping SNPs only)",
+        "-------------------------------------------------------",
+        f"Mean continent-level accuracy:  {_pct(info.get('qc_continent_accuracy'))} (minimum 95%)",
+        f"Mean population-level accuracy: {_pct(info.get('qc_population_accuracy'))}",
+        "",
         "Predictions",
         "-----------",
         f"Models in ensemble:  {N_MODELS}",
@@ -575,6 +701,10 @@ def write_job_log(path: str, info: dict) -> None:
         f"Continent consensus reached:  {info['continent_consensus_count']} of {info['sample_count']} samples",
         f"Population consensus reached: {info['population_consensus_count']} of {info['sample_count']} samples",
         f"Reliable (overlap >= {settings.min_reliable_snp_overlap}): {'yes' if info['is_reliable'] else 'NO'}",
+    ]
+    if info.get("missing_optional_outputs"):
+        lines.append("Not produced (see infer.sh output): " + ", ".join(info["missing_optional_outputs"]))
+    lines += [
         "",
         "infer.sh output",
         "---------------",
