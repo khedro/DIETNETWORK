@@ -5,7 +5,26 @@ Reviewed commits: `d23ff98`, `f553921` (branch `webPlatform_inference`, based on
 from this branch end to end in the existing worker image (+ scikit-learn),
 on genotypes taken from the Zenodo 1KGP hdf5 (true labels known).
 
-## Test results
+## Status after the platform fixes (branch `pr2-platform-fixes`, 2026-11-18)
+
+`Dietnet_inference/` is untouched; everything below is worker, image and test changes.
+
+| Finding | Status |
+|---|---|
+| 1 Worker contract | Fixed — `run_infer` passes 5/3, reads the new tables, QC stop → user message with the measured accuracy, checks outputs, removes scratch |
+| 2 Deployment inputs | Fixed except the partition — hdf5 fetched from Zenodo, labels generated; **training partition `.npz` still needed from Camille** in `ops/dietnet_1kgp/` (build fails clearly without it) |
+| 3 scikit-learn | Fixed — in `worker/requirements.txt` |
+| 4 Allele-order ID rewrite | Mitigated — the worker already rejects >5% swapped uploads; monomorphic `0` alleles now filled from the panel (overlap back to 229,986/229,986). Standalone `infer.sh` users still affected |
+| 5 Input `.bim` mutated | Harmless on the platform (worker's own converted copy) |
+| 6 Hard-coded vote thresholds | Not hit (platform always runs 5x3); for Camille |
+| 7 Exit 0 on failure / numeric IIDs | Worker now checks outputs; missing PCA plots are listed in the job log. The numeric-IID crash itself is for Camille |
+| 8 `1KGP_RESULTS` leftovers | Fixed on the platform (cleaned after every run) |
+| 9-10 Double 1KGP pass, minor items | For Camille |
+
+Also found while testing: `kombu` was unpinned and a fresh image build pulls 5.7, which crash-loops
+the worker against redis-py 5.0.8 — pinned to 5.6.2 in worker and backend.
+
+## Test results (original review)
 
 | Case | Input | Result |
 |---|---|---|
