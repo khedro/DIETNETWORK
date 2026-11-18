@@ -40,6 +40,13 @@ POPULATIONS_BY_CONTINENT = {
 }
 POPULATIONS = [p for pops in POPULATIONS_BY_CONTINENT.values() for p in pops]
 EXPECTED_COLUMNS = ["Sample", "Missing rate (%)", "Continent consensus", "Population consensus"] + CONTINENTS + POPULATIONS
+# Bar plots of the per-model labels and the hidden-layer PCA, written by infer.sh.
+PLOTS = [
+    "result_barplot_population.png",
+    "result_barplot_continent.png",
+    "result_representation_pop.png",
+    "result_representation_continent.png",
+]
 
 failures: list[str] = []
 
@@ -100,22 +107,27 @@ def main() -> None:
         print("Zip contents:")
         for name in sorted(n for n in names if "/" not in n):
             print(f"    {name}")
-        per_model = [n for n in names if n.startswith("result_DIETNET_RESULTS_BY_MODEL/")]
-        print(f"    result_DIETNET_RESULTS_BY_MODEL/ ({len(per_model)} files)")
         for expected in [
             "result_results_table.tsv",
             "result_job_log.txt",
-            "result_dietnet_predictions.txt",
-            "result_dietnetsnps_extractedsnps.txt",
-            "result_dietnetsnps_notextractedsnps.txt",
-            "result.hdf5",
-        ]:
+            "result_predictions.txt",
+            "result_predictions_bymodel_population.txt",
+            "result_predictions_bymodel_continent.txt",
+            "result_included_snps.txt",
+            "result_excluded_snps.txt",
+        ] + PLOTS:
             check(expected in names, f"zip contains {expected}")
-        check(len(per_model) == 15, f"15 per-model .npz files ({len(per_model)})")
+        for plot in PLOTS:
+            if plot in names:
+                check(zf.read(plot)[:8] == b"\x89PNG\r\n\x1a\n", f"{plot} is a PNG image")
+        # infer.sh's scratch (per-model .npz folders, hdf5, PLINK intermediates)
+        # must not end up in the user's download.
+        scratch = sorted(n for n in names if "/" in n or n.endswith((".npz", ".hdf5", ".bed", ".bim", ".fam")))
+        check(not scratch, f"no infer.sh scratch files in the zip ({scratch[:5]})")
 
         table_text = zf.read("result_results_table.tsv").decode()
         log_text = zf.read("result_job_log.txt").decode()
-        predictions_text = zf.read("result_dietnet_predictions.txt").decode()
+        predictions_text = zf.read("result_predictions_bymodel_population.txt").decode()
 
     print("Results table:")
     reader = csv.DictReader(io.StringIO(table_text), delimiter="\t")
@@ -123,7 +135,7 @@ def main() -> None:
     rows = list(reader)
     check(len(rows) == args.expected_samples, f"{len(rows)} rows (expected {args.expected_samples})")
 
-    model_votes = {r["samples"]: r for r in csv.DictReader(io.StringIO(predictions_text), delimiter="\t")}
+    model_votes = {r["Samples"]: r for r in csv.DictReader(io.StringIO(predictions_text), delimiter="\t")}
     bad_sums = bad_consensus = bad_votes = bad_rate = 0
     for row in rows:
         pop_counts = {p: int(row[p]) for p in POPULATIONS}
@@ -175,6 +187,8 @@ def main() -> None:
         f"Population consensus reached: {n_pop} of {len(rows)} samples",
         "infer.sh output",
         "Inference with Dietnet completed",
+        "Quality control on 1000 Genomes",
+        "Mean continent-level accuracy:",
     ]:
         check(expected in log_text, f"log contains {expected!r}")
     print("  --- log (first 40 lines) ---")

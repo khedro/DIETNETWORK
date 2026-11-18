@@ -1,6 +1,10 @@
 # Extra dependencies on top of Dietnet_inference/dietnet_infer_python3115_requirements.txt
 # (that file supplies torch/h5py/pandas/numpy pinned to what the model was validated with).
 celery==5.4.0
+# celery 5.4.0 accepts kombu>=5.3.4; kombu 5.7 requires redis-py>=6.1 and the
+# worker crash-loops with VersionMismatch against redis 5.0.8. Pinned to the
+# version the working images were built with.
+kombu==5.6.2
 redis==5.0.8
 sqlalchemy==2.0.35
 psycopg2-binary==2.9.9
