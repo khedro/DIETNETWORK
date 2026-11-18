@@ -70,5 +70,15 @@ class Settings:
     # --- Parallelism for the 15-model ensemble ---
     ensemble_workers: int = int(os.environ.get("ENSEMBLE_WORKERS", "1"))
 
+    # CPU threads each job's inference.py may use (OMP_NUM_THREADS/MKL_NUM_THREADS
+    # passed to infer.sh). PyTorch otherwise starts one thread per core in every
+    # job, so 9 concurrent jobs on 128 cores ran ~1150 threads: none of them
+    # finished in 30 min, versus 220 s for all 9 with 14 threads each.
+    # Default: cores / concurrent jobs.
+    inference_threads: int = int(
+        os.environ.get("INFERENCE_THREADS")
+        or max(1, (os.cpu_count() or 1) // max(1, int(os.environ.get("CELERY_WORKER_CONCURRENCY", "1"))))
+    )
+
 
 settings = Settings()

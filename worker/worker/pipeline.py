@@ -519,9 +519,11 @@ def run_infer(plink_prefix: str, output_prefix: str) -> InferResult:
         str(NB_FOLDS),
         str(NB_REPS),
     ]
-    logger.info("Running: %s", " ".join(cmd))
+    threads = str(settings.inference_threads)
+    env = {**os.environ, "OMP_NUM_THREADS": threads, "MKL_NUM_THREADS": threads}
+    logger.info("Running (%s threads): %s", threads, " ".join(cmd))
     try:
-        proc = subprocess.run(cmd, cwd=output_dir, capture_output=True, text=True)
+        proc = subprocess.run(cmd, cwd=output_dir, capture_output=True, text=True, env=env)
     finally:
         _remove_infer_intermediates(output_dir, output_name)
     if proc.stderr.strip():

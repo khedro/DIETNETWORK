@@ -14,7 +14,8 @@
 set -uo pipefail
 cd "$(dirname "$0")/../.."
 
-PROJECT=dietnet-e2e
+# E2E_PROJECT runs a second copy (own containers and images) next to an existing one.
+PROJECT="${E2E_PROJECT:-dietnet-e2e}"
 ENV_FILE=tests/e2e/.env.e2e
 WORK="$(pwd)/tests/e2e/.work"
 OUT="$WORK/out"
@@ -108,6 +109,10 @@ psql_ -At -c "SELECT coalesce(json_agg(row_to_json(t)), '[]') FROM (
     SELECT u.email, j.id, j.user_id, j.status, j.input_type, j.sample_count, j.snp_overlap_count,
            j.snp_overlap_total, j.is_reliable, j.created_at, j.started_at, j.completed_at, j.raw_deleted_at, j.error_message
     FROM jobs j JOIN users u ON u.id = j.user_id ORDER BY j.created_at) t" > "$OUT/jobs_raw.json"
+psql_ -At -c "SELECT coalesce(json_agg(row_to_json(t)), '[]') FROM (
+    SELECT u.email, u.is_verified, u.is_active, u.consented_at IS NOT NULL AS consented, u.created_at,
+           (SELECT count(*) FROM jobs j WHERE j.user_id = u.id) AS job_count
+    FROM users u ORDER BY u.created_at) t" > "$OUT/users.json"
 dc logs --no-log-prefix worker > "$OUT/worker.log" 2>&1
 dc logs --no-log-prefix backend > "$OUT/backend.log" 2>&1
 curl -s "http://127.0.0.1:18125/api/v2/messages?limit=500" > "$OUT/mailhog.json"

@@ -624,3 +624,15 @@ def test_run_infer_missing_plots_are_reported_not_fatal(tmp_path, monkeypatch):
     )
     result = run_infer("/converted/query", prefix)
     assert result.missing_optional_outputs == ["result_representation_pop.png", "result_representation_continent.png"]
+
+
+def test_run_infer_caps_inference_threads(tmp_path, monkeypatch):
+    """Each job's torch threads are capped so concurrent jobs don't oversubscribe the CPU."""
+    monkeypatch.setattr(settings, "inference_threads", 7)
+    prefix = _fake_infer(
+        tmp_path,
+        monkeypatch,
+        'echo "$OMP_NUM_THREADS $MKL_NUM_THREADS" > threads.txt\n' + _touch_outputs(REQUIRED_INFER_OUTPUTS),
+    )
+    run_infer("/converted/query", prefix)
+    assert open(os.path.join(os.path.dirname(prefix), "threads.txt")).read().split() == ["7", "7"]
