@@ -14,12 +14,12 @@ export const en = {
 
 	'home.title': 'Genetic ancestry inference, powered by Diet Network',
 	'home.subtitle':
-		"Upload your VCF or bgen genotype file and get ancestry predictions from HussinLab's pretrained Diet Network ensemble — 15 models trained on 1000 Genomes, covering 24 populations.",
+		"Upload your VCF, bgen, or PLINK genotype files and get ancestry predictions from HussinLab's pretrained Diet Network ensemble — 15 models trained on 1000 Genomes, covering 24 populations.",
 	'home.cta.start': 'Start a new analysis',
 	'home.cta.createAccount': 'Create a free account',
 	'home.cta.login': 'Log in',
 	'home.feature1.title': 'Bring your own genotypes',
-	'home.feature1.prefix': 'Accepts .vcf, .vcf.gz, and .bgen (with a .sample file). Genotypes must be harmonized to',
+	'home.feature1.prefix': 'Accepts .vcf, .vcf.gz, .bgen (with a .sample file), and PLINK (.bed/.bim/.fam). Genotypes must be harmonized to',
 	'home.feature2.title': 'Async, ensemble inference',
 	'home.feature2.body':
 		'Each job runs 15 models sequentially — typically a few minutes. Track status live from your dashboard and get an email when results are ready.',
@@ -121,7 +121,17 @@ export const en = {
 	'jobDetail.failedGeneric': 'The job failed.',
 	'jobDetail.failedHint':
 		'This is usually caused by malformed input or a genome build mismatch. You can start a new analysis from the dashboard.',
-	'jobDetail.download': 'Download all output files (.zip)',
+	'jobDetail.download': 'Download all output files (encrypted .zip)',
+	'jobDetail.downloading': 'Preparing download…',
+	'jobDetail.downloadError': 'The download failed. Please try again.',
+	'jobDetail.zipPasswordIntro':
+		'Your results are delivered as a password-protected zip (AES-256). Choose a password now — it is not stored, so it cannot be recovered or reset.',
+	'jobDetail.zipPassword': 'Zip password (at least 8 characters)',
+	'jobDetail.zipPasswordConfirm': 'Confirm password',
+	'jobDetail.zipPasswordTooShort': 'The password must be at least 8 characters.',
+	'jobDetail.zipPasswordMismatch': 'The two passwords do not match.',
+	'jobDetail.zipOpenHint':
+		'Open it with 7-Zip, The Unarchiver, or `7z x` — Windows Explorer’s built-in zip support cannot open AES-encrypted archives.',
 	'jobDetail.lowOverlapPrefix': 'Low SNP overlap',
 	'jobDetail.lowOverlapBody':
 		"Diet Network's authors recommend discarding predictions when overlap with the reference SNP panel is under 1000 SNPs. Treat these results as unreliable — a common cause is a genome build other than GRCh38.",

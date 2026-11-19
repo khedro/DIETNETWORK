@@ -167,13 +167,23 @@ The core table — one row per inference run.
 | `snp_overlap_count` | `int`, nullable | SNPs in the upload that overlap the model's reference panel |
 | `snp_overlap_total` | `int`, nullable | reference panel size |
 | `is_reliable` | `bool`, nullable | `snp_overlap_count >= min_reliable_snp_overlap` — surfaced to the user whenever predictions are shown |
-| `predictions` | `json`, nullable | `{"rows": [...]}`, per-sample ancestry predictions |
+| `sample_count` | `int`, nullable | samples in the upload, set on success — kept through the retention purge for usage statistics (`ops/usage_stats.sql`) |
+| `predictions` | `json`, nullable | `{"rows": [...]}`, per-sample ancestry predictions; cleared by the retention purge |
 | `error_message` | `text`, nullable | sanitized, user-facing only — never a raw traceback (see `worker/tasks.py`) |
 | `created_at` / `started_at` / `completed_at` / `purged_at` | `timestamptz`, nullable except `created_at` | job lifecycle timestamps |
 
 Filesystem layout for a job's files: `{data_root}/{user_id}/{job_id}/raw/...`
 and `.../results/...` (`data_root` defaults to `/data`, mounted from the
 host/cloud volume — see `docker-compose.yml`).
+
+Usage statistics (users, jobs and successful jobs per user, samples
+inferred, positions per analysis, per month) come from plain counts over
+`users` and `jobs` — see `ops/usage_stats.sql`:
+
+```bash
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -v since=2026-01-01 -v until=2027-01-01 < ops/usage_stats.sql   # period optional
+```
 
 ### `audit_log`
 

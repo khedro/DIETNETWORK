@@ -43,8 +43,14 @@ RUN pip install --no-cache-dir -r /opt/dietnet/requirements.txt \
 
 # --- Pretrained weights + SNP files, downloaded ONCE at image build time (Zenodo 16943452) ---
 # Never fetched at request/runtime. See ops/scripts/fetch_zenodo_models.sh.
+# The 1KGP fold partition isn't on Zenodo: it ships in ops/dietnet_1kgp/ and
+# the fetch script fails the build without it (see ops/dietnet_1kgp/README.md).
 COPY ops/scripts/fetch_zenodo_models.sh /opt/fetch_zenodo_models.sh
-RUN chmod +x /opt/fetch_zenodo_models.sh && /opt/fetch_zenodo_models.sh /opt/dietnet/files
+COPY ops/dietnet_1kgp /opt/dietnet_1kgp
+RUN chmod +x /opt/fetch_zenodo_models.sh \
+    && PARTITION_FILE=/opt/dietnet_1kgp/1KGP_2322inds_24pops_230Ksnps_parition.npz \
+       /opt/fetch_zenodo_models.sh /opt/dietnet/files \
+    && rm -rf /opt/dietnet_1kgp
 
 # --- Worker application code ---
 WORKDIR /app
@@ -54,7 +60,9 @@ ENV PLINK_PATH=/opt/plink/plink \
     PLINK2_PATH=/opt/plink2/plink2 \
     DIETNET_CODE_PATH=/opt/dietnet/Dietnet_inference \
     DIETNET_FILES_PATH=/opt/dietnet/files \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/tmp/matplotlib
 
 RUN useradd -m -u 10001 worker && mkdir -p /data && chown -R worker /data /app
 USER worker

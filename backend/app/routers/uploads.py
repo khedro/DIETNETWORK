@@ -4,6 +4,7 @@ import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.celery_app import celery_app
@@ -75,6 +76,22 @@ async def create_upload(
 ):
     if not consent:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Consent is required to process genetic data")
+
+    # One in-flight job per user at a time -- simpler than tracking a
+    # cumulative per-user byte budget, and still directly blocks a user from
+    # spamming concurrent uploads (each already capped at max_upload_mb on
+    # its own; this stops them multiplying that cap by submitting several
+    # at once).
+    existing = (
+        await db.execute(
+            select(Job.id).where(Job.user_id == user.id, Job.status.in_([JobStatus.queued, JobStatus.running]))
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "You already have a job in progress. Please wait for it to finish before uploading another.",
+        )
 
     filename = _sanitize_filename(genotype_file.filename or "")
     input_type = _classify(filename)
