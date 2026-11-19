@@ -162,6 +162,68 @@ async function runUser(name, cfg, ctx, shared) {
 	const files = cfg.files.map((f) => path.join(DATA, f));
 	const byExt = (ext) => files.find((f) => f.endsWith(ext));
 
+	// The session cookie lasts 30 min from login and isn't renewed, so a user
+	// waiting on a long job gets logged out. They log in again, as a person
+	// would; each time is recorded as a finding.
+	const relogin = async (where) => {
+		rec.findings.push({ kind: 'session-expired', t: (Date.now() - t0) / 1000, where });
+		log(name, `logged out (${where}); logging in again`);
+		await page.goto(BASE + '/login', { waitUntil: 'networkidle' });
+		await page.fill('#email', email);
+		await page.fill('#password', PASSWORD);
+		await waitForCaptcha(page);
+		await page.click('button[type=submit]');
+		await page.waitForURL('**/dashboard', { timeout: 60000 });
+	};
+	const loggedOut = async () =>
+		page.url().includes('/login') ||
+		(await page.locator('.error-banner', { hasText: 'Not authenticated' }).count()) > 0;
+	// Opens url, logging in again first if the session has expired.
+	const openWithSession = async (url, where) => {
+		await page.goto(url, { waitUntil: 'networkidle' });
+		if (await loggedOut()) {
+			await relogin(where);
+			await page.goto(url, { waitUntil: 'networkidle' });
+		}
+	};
+
+	// Encrypted download of the job open on the page; retries while the
+	// 9-at-once download cap answers 429.
+	const download = async (job) => {
+		await page.fill('input[type=password] >> nth=0', ZIP_PASSWORD);
+		await page.fill('input[type=password] >> nth=1', ZIP_PASSWORD);
+		for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt++) {
+			const start = Date.now();
+			const downloadP = page.waitForEvent('download', { timeout: DOWNLOAD_TIMEOUT_MS });
+			const responseP = page.waitForResponse((r) => r.url().endsWith('/download'), { timeout: DOWNLOAD_TIMEOUT_MS });
+			await page.click('button[type=submit]');
+			const res = await responseP;
+			if (res.ok()) {
+				const dl = await downloadP;
+				const dest = path.join(OUT, 'zips', `${name}-job${job.k}.zip`);
+				await dl.saveAs(dest);
+				job.downloadAttempts.push({ attempt, status: res.status(), seconds: (Date.now() - start) / 1000 });
+				job.zipBytes = fs.statSync(dest).size;
+				return;
+			}
+			downloadP.catch(() => {});
+			const banner = await page.locator('form .error-banner').innerText({ timeout: 15000 }).catch(() => null);
+			job.downloadAttempts.push({ attempt, status: res.status(), seconds: (Date.now() - start) / 1000, banner });
+			log(name, `job ${job.k} download attempt ${attempt}: ${res.status()}`);
+			if (res.status() === 401) {
+				const jobUrl = page.url();
+				await relogin('download');
+				await page.goto(jobUrl, { waitUntil: 'networkidle' });
+				await page.fill('input[type=password] >> nth=0', ZIP_PASSWORD);
+				await page.fill('input[type=password] >> nth=1', ZIP_PASSWORD);
+				continue;
+			}
+			if (res.status() !== 429) throw new Error(`download failed with ${res.status()}: ${banner}`);
+			await sleep(5000);
+		}
+		throw new Error('download never got a slot');
+	};
+
 	try {
 		await step('home', async () => {
 			await page.goto(BASE + '/', { waitUntil: 'networkidle' });
@@ -277,39 +339,16 @@ async function runUser(name, cfg, ctx, shared) {
 			while (Date.now() < deadline) {
 				if (await form.count()) return 'done';
 				if (await failed.count()) return 'failed';
-				if (await pageError.count()) throw new Error(`job page error: ${await pageError.first().innerText()}`);
+				if (await pageError.count()) {
+					const text = await pageError.first().innerText();
+					if (!text.includes('Not authenticated')) throw new Error(`job page error: ${text}`);
+					const jobUrl = page.url();
+					await relogin('job page');
+					await page.goto(jobUrl, { waitUntil: 'networkidle' });
+				}
 				await sleep(1000);
 			}
 			throw new Error('job did not finish in time');
-		};
-
-		// Encrypted download of the job open on the page; retries while the
-		// 9-at-once download cap answers 429.
-		const download = async (job) => {
-			await page.fill('input[type=password] >> nth=0', ZIP_PASSWORD);
-			await page.fill('input[type=password] >> nth=1', ZIP_PASSWORD);
-			for (let attempt = 1; attempt <= MAX_DOWNLOAD_ATTEMPTS; attempt++) {
-				const start = Date.now();
-				const downloadP = page.waitForEvent('download', { timeout: DOWNLOAD_TIMEOUT_MS });
-				const responseP = page.waitForResponse((r) => r.url().endsWith('/download'), { timeout: DOWNLOAD_TIMEOUT_MS });
-				await page.click('button[type=submit]');
-				const res = await responseP;
-				if (res.ok()) {
-					const dl = await downloadP;
-					const dest = path.join(OUT, 'zips', `${name}-job${job.k}.zip`);
-					await dl.saveAs(dest);
-					job.downloadAttempts.push({ attempt, status: res.status(), seconds: (Date.now() - start) / 1000 });
-					job.zipBytes = fs.statSync(dest).size;
-					return;
-				}
-				downloadP.catch(() => {});
-				const banner = await page.locator('form .error-banner').innerText({ timeout: 15000 }).catch(() => null);
-				job.downloadAttempts.push({ attempt, status: res.status(), seconds: (Date.now() - start) / 1000, banner });
-				log(name, `job ${job.k} download attempt ${attempt}: ${res.status()}`);
-				if (res.status() !== 429) throw new Error(`download failed with ${res.status()}: ${banner}`);
-				await sleep(5000);
-			}
-			throw new Error('download never got a slot');
 		};
 
 		// Jobs one after the other: the next upload goes in as soon as the previous
@@ -324,7 +363,7 @@ async function runUser(name, cfg, ctx, shared) {
 					await page.locator('a[href="/upload"]').first().click();
 					await page.waitForURL('**/upload');
 				} else {
-					await page.goto(BASE + '/upload', { waitUntil: 'networkidle' });
+					await openWithSession(BASE + '/upload', 'upload page');
 				}
 				await page.locator(uploadPicker).waitFor({ state: 'attached' });
 			});
@@ -390,7 +429,7 @@ async function runUser(name, cfg, ctx, shared) {
 		}
 
 		await step('dashboard', async () => {
-			await page.goto(BASE + '/dashboard', { waitUntil: 'networkidle' });
+			await openWithSession(BASE + '/dashboard', 'dashboard');
 			rec.dashboardRows = await page.locator('table tbody tr').count();
 			if (rec.dashboardRows !== rec.jobsPlanned)
 				throw new Error(`expected ${rec.jobsPlanned} job(s) on the dashboard, saw ${rec.dashboardRows}`);

@@ -368,6 +368,13 @@ for name in names:
         if f["kind"] == "other-users-job":
             check(f["status"] == 404, f"{name}: another user's job is refused (404)")
             w(f"- {name} opening another user's job: {f['status']}, page shows: \"{f['banner']}\".")
+expired = [(n, f) for n in names for f in users.get(n, {}).get("findings", []) if f["kind"] == "session-expired"]
+if expired:
+    w(f"- **Logged out while using the site:** {len(expired)} time(s), {len({n for n, _ in expired})} user(s); "
+      f"first at {min(f['t'] for _, f in expired):.0f} s ({', '.join(sorted({f['where'] for _, f in expired}))}). "
+      "The session lasts 30 min from login and isn't renewed while the job page polls; the simulated users logged in again.")
+else:
+    w("- No user was logged out during the run.")
 rejected = [n for n in names if expected[n]["outcome"] == "failed"]
 for name in rejected:
     for job in users.get(name, {}).get("jobs", []):
