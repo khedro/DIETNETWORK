@@ -46,6 +46,7 @@ class Job(Base):
     snp_overlap_count: Mapped[int | None] = mapped_column(Integer)
     snp_overlap_total: Mapped[int | None] = mapped_column(Integer)
     is_reliable: Mapped[bool | None] = mapped_column(Boolean)
+    sample_count: Mapped[int | None] = mapped_column(Integer)
     predictions: Mapped[dict | None] = mapped_column(JSON)
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

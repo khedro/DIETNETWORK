@@ -9,14 +9,20 @@ from worker.db import Job, User, get_session, utcnow
 from worker.email import send_job_completed_email, send_job_failed_email, send_job_started_email
 from worker.pipeline import (
     PipelineError,
+    build_results_table,
     check_allele_harmonization,
     check_snp_overlap,
+    compute_sample_missing_rates,
     convert_bgen_to_plink,
     convert_vcf_to_plink,
+    count_position_overlap,
     count_samples,
-    parse_predictions,
+    detect_id_labeling_mismatch,
+    relabel_snp_ids,
     requalify_plink,
     run_infer,
+    write_job_log,
+    write_results_table,
 )
 
 logger = logging.getLogger("worker.tasks")
@@ -105,17 +111,36 @@ def run_inference_job(self, job_id: str) -> None:
                 f"{settings.max_samples}. Please split your data into smaller batches and re-upload."
             )
 
+        # Rewrite SNP IDs to the panel's chr:pos:ref:alt convention by
+        # chromosome + position, so rsID-labeled or "chr"-less uploads still
+        # overlap (see pipeline.relabel_snp_ids). Runs on the converted copy.
+        dummy_bim_path = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dummy.bim")
+        relabel = relabel_snp_ids(plink_prefix, dummy_bim_path)
+        overlap_by_position = count_position_overlap(plink_prefix, dummy_bim_path)
+
         # Pre-flight SNP-overlap check: reject before spending several
         # minutes running the 15-model ensemble on data we already know is
         # unreliable (see pipeline.check_snp_overlap).
         preflight_prefix = os.path.join(convert_dir, "preflight_overlap")
         overlap_count, overlap_total = check_snp_overlap(plink_prefix, preflight_prefix)
         if overlap_count < settings.min_reliable_snp_overlap:
+            # SNP IDs were already rewritten by position above, so positions
+            # that still don't match by ID have alleles that differ from the
+            # panel's at that position.
+            id_labeling_hint = (
+                f" Your data covers {overlap_by_position} of the panel's positions, but at "
+                f"{relabel['allele_mismatch']} of them the alleles differ from the panel's, so they "
+                "could not be matched to Diet Network SNPs. Check that your data is on GRCh38 and "
+                "that alleles are reported on the forward strand, then re-upload."
+                if detect_id_labeling_mismatch(plink_prefix)
+                else ""
+            )
             raise PipelineError(
                 f"Only {overlap_count} of {overlap_total} Diet Network reference SNPs were found "
                 f"in your data (minimum {settings.min_reliable_snp_overlap} required for reliable "
                 "predictions). This is often caused by a sparse genotyping array or a genome build "
-                "other than GRCh38 -- consider imputing your data to increase SNP coverage, then re-upload."
+                f"other than GRCh38 -- consider imputing your data to increase SNP coverage, then "
+                f"re-upload.{id_labeling_hint}"
             )
 
         # Allele-harmonization check: same extracted .bim the overlap check
@@ -124,7 +149,6 @@ def run_inference_job(self, job_id: str) -> None:
         # upload, which --real-ref-alleles would otherwise let through with
         # silently inverted dosage rather than an error (see
         # pipeline.check_allele_harmonization).
-        dummy_bim_path = os.path.join(settings.dietnet_files_path, "DN_SNPS", "dummy.bim")
         harmonization = check_allele_harmonization(preflight_prefix + ".bim", dummy_bim_path)
         compared = harmonization["compared"]
         mismatched = harmonization["swapped"] + harmonization["flipped"] + harmonization["ambiguous"]
@@ -143,18 +167,49 @@ def run_inference_job(self, job_id: str) -> None:
                 "re-harmonize your alleles to match the reference panel (GRCh38, matching strand) and re-upload."
             )
 
+        # Per-sample missing rate over the overlapping SNPs (preflight_prefix
+        # is the overlap-extracted set from check_snp_overlap).
+        missing_rates = compute_sample_missing_rates(
+            preflight_prefix, os.path.join(convert_dir, "sample_missing")
+        )
+
         output_prefix = os.path.join(results_dir, "result")
-        predictions_file = run_infer(plink_prefix, output_prefix)
+        infer = run_infer(plink_prefix, output_prefix)
 
         is_reliable = overlap_count >= settings.min_reliable_snp_overlap
-        predictions = parse_predictions(predictions_file)
+        table_rows = build_results_table(infer.by_model_file, missing_rates, settings.consensus_threshold)
+        write_results_table(f"{output_prefix}_results_table.tsv", table_rows)
+        write_job_log(
+            f"{output_prefix}_job_log.txt",
+            {
+                "job_id": job.id,
+                "generated_at": utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                "input_type": job.input_type,
+                "sample_count": sample_count,
+                "relabel": relabel,
+                "overlap_by_position": overlap_by_position,
+                "overlap_count": overlap_count,
+                "overlap_total": overlap_total,
+                "harmonization": harmonization,
+                "missing_rates": missing_rates,
+                "consensus_threshold": settings.consensus_threshold,
+                "continent_consensus_count": sum(r["Continent consensus"] != "NA" for r in table_rows),
+                "population_consensus_count": sum(r["Population consensus"] != "NA" for r in table_rows),
+                "is_reliable": is_reliable,
+                "qc_population_accuracy": infer.qc_population_accuracy,
+                "qc_continent_accuracy": infer.qc_continent_accuracy,
+                "missing_optional_outputs": infer.missing_optional_outputs,
+                "infer_stdout": infer.stdout,
+            },
+        )
 
         job.status = "done"
-        job.results_path = predictions_file
+        job.results_path = infer.by_model_file
         job.snp_overlap_count = overlap_count
         job.snp_overlap_total = overlap_total
         job.is_reliable = is_reliable
-        job.predictions = {"rows": predictions}
+        job.sample_count = sample_count
+        job.predictions = {"consensus_threshold": settings.consensus_threshold, "rows": table_rows}
         job.completed_at = utcnow()
         session.commit()
 

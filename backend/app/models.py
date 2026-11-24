@@ -83,6 +83,8 @@ class Job(Base):
     snp_overlap_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     snp_overlap_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_reliable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    # Kept through the retention purge, for usage statistics (ops/usage_stats.sql).
+    sample_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     predictions: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # parsed per-sample predictions
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)  # sanitized, user-facing only

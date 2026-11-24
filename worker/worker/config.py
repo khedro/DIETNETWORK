@@ -38,6 +38,11 @@ class Settings:
     # are normal; a large fraction indicates the whole file needs re-harmonizing.
     max_allele_mismatch_fraction: float = float(os.environ.get("MAX_ALLELE_MISMATCH_FRACTION", "0.05"))
 
+    # Minimum number of the 15 models that must agree for a sample's continent
+    # / population consensus in the results table; below it the cell is "NA".
+    # 12 (80%) is the value proposed in specifications.docx.
+    consensus_threshold: int = int(os.environ.get("CONSENSUS_THRESHOLD", "12"))
+
     # --- QC ---
     geno_missingness_threshold: str = os.environ.get("GENO_MISSINGNESS_THRESHOLD", "0.1")
 
@@ -64,6 +69,16 @@ class Settings:
 
     # --- Parallelism for the 15-model ensemble ---
     ensemble_workers: int = int(os.environ.get("ENSEMBLE_WORKERS", "1"))
+
+    # CPU threads each job's inference.py may use (OMP_NUM_THREADS/MKL_NUM_THREADS
+    # passed to infer.sh). PyTorch otherwise starts one thread per core in every
+    # job, so 9 concurrent jobs on 128 cores ran ~1150 threads: none of them
+    # finished in 30 min, versus 220 s for all 9 with 14 threads each.
+    # Default: cores / concurrent jobs.
+    inference_threads: int = int(
+        os.environ.get("INFERENCE_THREADS")
+        or max(1, (os.cpu_count() or 1) // max(1, int(os.environ.get("CELERY_WORKER_CONCURRENCY", "1"))))
+    )
 
 
 settings = Settings()
