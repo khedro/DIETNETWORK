@@ -1,6 +1,6 @@
 # 12-user browser simulation report
 
-Total time 575 s. Checks: **181/181 passed**.
+Total time 534 s. Checks: **181/181 passed**.
 
 12 users, 18 jobs (repeat submissions: user1 x3, user4 x2, user8 x2, user11 x2, user12 x2).
 
@@ -8,35 +8,35 @@ Total time 575 s. Checks: **181/181 passed**.
 
 | Job | Format | Upload MB | Uploaded at (s) | Queue wait (s) | Job run (s) | Download (s) | Attempts | Outcome |
 |---|---|---:|---:|---:|---:|---:|---:|---|
-| user1#1 | plink | 11.3 | 8.8 | 0.0 | 208.1 | 0.3 | 1 | done |
-| user1#2 | plink | 11.3 | 222.4 | 0.0 | 169.1 | 0.2 | 1 | done |
-| user1#3 | plink | 11.3 | 396.2 | 0.0 | 168.0 | 0.8 | 1 | done |
-| user2#1 | plink | 11.3 | 8.8 | 0.0 | 211.3 | 0.7 | 1 | done |
-| user3#1 | plink | 11.3 | 8.7 | 0.1 | 210.9 | 0.8 | 1 | done |
-| user4#1 | plink | 11.3 | 9.0 | 0.0 | 210.8 | 0.3 | 1 | done |
-| user4#2 | plink | 11.3 | 223.7 | 0.0 | 168.3 | 0.7 | 1 | done |
-| user5#1 | plink | 11.3 | 8.8 | 0.0 | 211.0 | 0.3 | 2 | done |
-| user6#1 | plink | 11.3 | 8.9 | 0.0 | 210.5 | 0.7 | 1 | done |
-| user7#1 | plink | 11.3 | 8.9 | 0.0 | 210.6 | 0.6 | 1 | done |
-| user8#1 | vcf | 56.0 | 9.5 | 209.7 | 166.3 | 0.3 | 1 | done |
-| user8#2 | vcf | 56.0 | 387.5 | 0.0 | 165.4 | 0.8 | 1 | done |
-| user9#1 | vcf.gz | 6.0 | 8.9 | 0.0 | 210.2 | 0.3 | 2 | done |
-| user10#1 | bgen | 21.4 | 9.4 | 0.0 | 210.7 | 0.8 | 1 | done |
-| user11#1 | bgen | 21.4 | 9.4 | 207.5 | 169.2 | 0.2 | 1 | done |
-| user11#2 | bgen | 21.4 | 391.6 | 0.0 | 166.7 | 0.7 | 1 | done |
-| user12#1 | low_overlap | 0.0 | 7.9 | 0.1 | 1.0 | - | - | failed |
-| user12#2 | low_overlap | 0.0 | 12.6 | 206.8 | 1.0 | - | - | failed |
+| user1#1 | plink | 11.3 | 8.2 | 0.0 | 203.6 | 0.2 | 1 | done |
+| user1#2 | plink | 11.3 | 213.5 | 0.0 | 160.8 | 0.2 | 1 | done |
+| user1#3 | plink | 11.3 | 379.2 | 0.0 | 146.5 | 0.6 | 1 | done |
+| user2#1 | plink | 11.3 | 8.1 | 0.1 | 204.7 | 0.6 | 1 | done |
+| user3#1 | plink | 11.3 | 8.1 | 0.0 | 198.3 | 0.6 | 1 | done |
+| user4#1 | plink | 11.3 | 8.4 | 0.0 | 203.6 | 0.3 | 1 | done |
+| user4#2 | plink | 11.3 | 214.9 | 0.0 | 161.6 | 0.7 | 1 | done |
+| user5#1 | plink | 11.3 | 8.2 | 0.0 | 204.5 | 0.7 | 1 | done |
+| user6#1 | plink | 11.3 | 8.1 | 0.1 | 203.8 | 0.3 | 2 | done |
+| user7#1 | plink | 11.3 | 8.2 | 0.0 | 204.4 | 0.7 | 1 | done |
+| user8#1 | vcf | 56.0 | 8.9 | 197.1 | 162.6 | 0.3 | 1 | done |
+| user8#2 | vcf | 56.0 | 371.2 | 0.0 | 146.1 | 0.7 | 1 | done |
+| user9#1 | vcf.gz | 6.0 | 8.3 | 0.0 | 197.6 | 0.3 | 2 | done |
+| user10#1 | bgen | 21.4 | 8.8 | 197.1 | 162.6 | 0.6 | 1 | done |
+| user11#1 | bgen | 21.4 | 8.8 | 0.0 | 197.1 | 0.3 | 1 | done |
+| user11#2 | bgen | 21.4 | 210.3 | 0.0 | 163.0 | 0.6 | 1 | done |
+| user12#1 | low_overlap | 0.0 | 7.2 | 0.1 | 1.0 | - | - | failed |
+| user12#2 | low_overlap | 0.0 | 11.9 | 194.5 | 1.2 | - | - | failed |
 
 ## Queue and concurrency
 
-- Job run time: median 209 s, min 165 s, max 211 s.
-- Queue wait: median 0.0 s, max 209.7 s.
-- Jobs that waited for a slot (> 5 s): user8#1 (210 s), user11#1 (208 s), user12#2 (207 s).
-- Delay from a slot freeing to the next queued job starting: user8#1 0.0 s, user11#1 0.0 s, user12#2 0.1 s.
+- Job run time: median 197 s, min 146 s, max 205 s.
+- Queue wait: median 0.0 s, max 197.1 s.
+- Jobs that waited for a slot (> 5 s): user8#1 (197 s), user10#1 (197 s), user12#2 (195 s).
+- Delay from a slot freeing to the next queued job starting: user8#1 0.0 s, user10#1 0.0 s, user12#2 0.0 s.
 - Peak jobs running at once (from database timestamps): **9** (limit 9).
-- Queue positions shown on job pages: {'user8': [1, 2], 'user10': [1], 'user11': [1], 'user12': [3]}.
-- Upload order: user12#1, user3#1, user2#1, user1#1, user5#1, user6#1, user7#1, user9#1, user4#1, user10#1, user11#1, user8#1, user12#2, user1#2, user4#2, user8#2, user11#2, user1#3.
-- Start order: user12#1, user3#1, user2#1, user1#1, user5#1, user6#1, user7#1, user9#1, user4#1, user10#1, user11#1, user8#1, user12#2, user1#2, user4#2, user8#2, user11#2, user1#3.
+- Queue positions shown on job pages: {'user8': [2], 'user10': [1], 'user11': [1], 'user12': [3]}.
+- Upload order: user12#1, user2#1, user3#1, user6#1, user1#1, user7#1, user5#1, user9#1, user4#1, user11#1, user10#1, user8#1, user12#2, user11#2, user1#2, user4#2, user8#2, user1#3.
+- Start order: user12#1, user2#1, user3#1, user6#1, user1#1, user7#1, user5#1, user9#1, user4#1, user11#1, user10#1, user8#1, user12#2, user11#2, user1#2, user4#2, user8#2, user1#3.
 
 ## Postgres
 
@@ -76,14 +76,14 @@ Total time 575 s. Checks: **181/181 passed**.
 
 | Endpoint | Calls | Median ms | p95 ms | Max ms |
 |---|---:|---:|---:|---:|
-| `GET /api/auth/me` | 44 | 5 | 9 | 117 |
-| `GET /api/auth/verify` | 12 | 6 | 449 | 449 |
-| `GET /api/jobs` | 24 | 65 | 684 | 761 |
-| `GET /api/jobs/{id}` | 951 | 7 | 17 | 95 |
-| `POST /api/auth/login` | 12 | 503 | 717 | 717 |
-| `POST /api/auth/signup` | 12 | 868 | 1154 | 1154 |
-| `POST /api/jobs/{id}/download` | 18 | 417 | 714 | 714 |
-| `POST /api/uploads` | 19 | 1022 | 2214 | 2214 |
+| `GET /api/auth/me` | 44 | 5 | 14 | 36 |
+| `GET /api/auth/verify` | 12 | 8 | 15 | 15 |
+| `GET /api/jobs` | 24 | 28 | 806 | 809 |
+| `GET /api/jobs/{id}` | 905 | 7 | 21 | 75 |
+| `POST /api/auth/login` | 12 | 726 | 1106 | 1106 |
+| `POST /api/auth/signup` | 12 | 1125 | 1264 | 1264 |
+| `POST /api/jobs/{id}/download` | 18 | 362 | 609 | 609 |
+| `POST /api/uploads` | 19 | 960 | 2482 | 2482 |
 
 Responses with an error status:
 
@@ -96,24 +96,24 @@ Responses with an error status:
 
 | Container | Peak CPU (% of one core) | Peak memory (MB) |
 |---|---:|---:|
-| dietnet-e2e-pr2-backend-1 | 114 | 216 |
-| dietnet-e2e-pr2-beat-1 | 0 | 56 |
-| dietnet-e2e-pr2-edge-1 | 32 | 55 |
-| dietnet-e2e-pr2-frontend-1 | 4 | 24 |
-| dietnet-e2e-pr2-mailhog-1 | 3 | 10 |
-| dietnet-e2e-pr2-postgres-1 | 10 | 73 |
+| dietnet-e2e-pr2-backend-1 | 44 | 213 |
+| dietnet-e2e-pr2-beat-1 | 0 | 68 |
+| dietnet-e2e-pr2-edge-1 | 35 | 61 |
+| dietnet-e2e-pr2-frontend-1 | 5 | 30 |
+| dietnet-e2e-pr2-mailhog-1 | 1 | 10 |
+| dietnet-e2e-pr2-postgres-1 | 4 | 75 |
 | dietnet-e2e-pr2-redis-1 | 1 | 7 |
-| dietnet-e2e-pr2-worker-1 | 8217 | 14039 |
+| dietnet-e2e-pr2-worker-1 | 8770 | 13957 |
 
 - Host load (1 min) peak: 62.2 on 128 cores.
 - Most model processes (`inference.py`) running at once: 9.
 - Most jobs inside `infer.sh` at once: 9.
-- `/data` peak size: 6235 MB.
+- `/data` peak size: 6233 MB.
 
 ## Downloads
 
 - 16 succeeded (expected 16); 2 attempt(s) refused with 429 (the 9-at-once limit) and retried.
-- Successful download time: median 0.7 s, max 0.8 s.
+- Successful download time: median 0.6 s, max 0.7 s.
 - Zip size: median 1.9 MB.
 
 ## Findings from the browser
@@ -146,18 +146,18 @@ Browser console errors and failed requests:
 === Per user (users with at least one job) ===
   user   | jobs_submitted | jobs_successful | samples_inferred 
 ---------+----------------+-----------------+------------------
- user 1  |              1 |               1 |               50
+ user 1  |              2 |               2 |              100
  user 2  |              1 |               1 |               50
- user 3  |              2 |               2 |              100
- user 4  |              3 |               3 |              150
- user 5  |              1 |               1 |               50
- user 6  |              1 |               1 |               50
- user 7  |              2 |               2 |              100
- user 8  |              2 |               2 |              100
+ user 3  |              1 |               1 |               50
+ user 4  |              1 |               1 |               50
+ user 5  |              2 |               2 |              100
+ user 6  |              2 |               0 |                0
+ user 7  |              3 |               3 |              150
+ user 8  |              1 |               1 |               50
  user 9  |              1 |               1 |               50
- user 10 |              2 |               0 |                0
+ user 10 |              1 |               1 |               50
  user 11 |              1 |               1 |               50
- user 12 |              1 |               1 |               50
+ user 12 |              2 |               2 |              100
 
 
 === Positions per successful analysis (panel SNPs used) ===
@@ -342,7 +342,7 @@ Browser console errors and failed requests:
 - ✅ FCFS: no job started ahead of one uploaded over 1 s earlier (0 found: [])
 - ✅ concurrency cap: at most 9 jobs ran at once (peak 9)
 - ✅ queue exercised: 3 job(s) waited > 5 s for a slot
-- ✅ queued jobs start within 10 s of a slot freeing ([('user8#1', 0.0), ('user11#1', 0.0), ('user12#2', 0.1)])
+- ✅ queued jobs start within 10 s of a slot freeing ([('user8#1', 0.0), ('user10#1', 0.0), ('user12#2', 0.0)])
 - ✅ every successful job downloaded (16/16)
 - ✅ selecting or dropping .bed/.bim/.fam together submits (4/4 users)
 - ✅ user1: another user's job is refused (404)
